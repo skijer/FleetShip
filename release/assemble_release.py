@@ -97,6 +97,7 @@ def main():
     shutil.copy2(REPOSITORY_ROOT / "release" / "README-players.txt", staging / "README.txt")
     for archive_name, folder in GAME_FOLDERS.items():
         stage_game(args.games / archive_name, staging / folder, args.platform)
+    shutil.copy2(staging / "Ship" / "gamecontrollerdb.txt", staging / "gamecontrollerdb.txt")
     refuse_rom_data(staging)
     write_zip(staging, args.output / f"Fleet-{args.platform}{suffix}.zip")
 

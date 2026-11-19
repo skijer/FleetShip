@@ -37,6 +37,9 @@ jobs:
             Linux) echo "name=linux" >> "$GITHUB_OUTPUT" ;;
             macOS) echo "name=mac" >> "$GITHUB_OUTPUT" ;;
           esac
+      - name: Install patchelf
+        if: runner.os == 'Linux'
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq patchelf
       - uses: actions/download-artifact@v4
         with:
           name: fleet-${{ steps.platform.outputs.name == 'mac' && 'macos' || steps.platform.outputs.name }}

@@ -63,6 +63,23 @@ jobs:
               cp "$file" artifact/
             fi
           done
+      # Players lack the runner's packages, so the host carries its non-system libraries like the games do.
+      - name: Bundle Linux libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get install -y -qq patchelf
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20240109-1/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+          ./linuxdeploy-x86_64.AppImage --appimage-extract-and-run --appdir AppDir \
+            --executable artifact/fleet --library artifact/libultraship.so
+          cp AppDir/usr/bin/fleet AppDir/usr/lib/*.so* artifact/
+          patchelf --set-rpath '$ORIGIN' artifact/fleet
+          ls -la artifact
+      - name: Bundle macOS libraries
+        if: runner.os == 'macOS'
+        run: |
+          python3 release/bundle_macos_libraries.py artifact
+          otool -L artifact/fleet
       - uses: actions/upload-artifact@v4
         with:
           name: fleet-${{ matrix.platform }}

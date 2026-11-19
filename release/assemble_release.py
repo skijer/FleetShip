@@ -20,13 +20,25 @@ def extract_zip(archive, target):
                 extracted.chmod(mode)
 
 
+def is_elf_executable(path):
+    with path.open("rb") as header:
+        return bool(path.stat().st_mode & 0o111) and header.read(4) == b"\x7fELF"
+
+
 def unpack_appimage(folder):
     for appimage in folder.glob("*.appimage"):
         appimage.chmod(0o755)
         subprocess.run([str(appimage.resolve()), "--appimage-extract"], cwd=folder, check=True)
-        shutil.copytree(folder / "squashfs-root" / "usr" / "bin", folder, dirs_exist_ok=True)
+        usr = folder / "squashfs-root" / "usr"
+        launchers = [folder / path.name for path in (usr / "bin").iterdir() if path.is_file() and is_elf_executable(path)]
+        # Fleet loads the game module from the game folder, so usr/bin and usr/lib are flattened into it.
+        shutil.copytree(usr / "bin", folder, dirs_exist_ok=True)
+        shutil.copytree(usr / "lib", folder, dirs_exist_ok=True)
         shutil.rmtree(folder / "squashfs-root")
         appimage.unlink()
+        # The launcher still extracts the ROM; its install rpath pointed at the AppImage's ../lib.
+        for launcher in launchers:
+            subprocess.run(["patchelf", "--set-rpath", "$ORIGIN", str(launcher)], check=True)
 
 
 def unpack_disk_image(folder):
@@ -77,6 +89,10 @@ def main():
     suffix = "-unsafe" if args.edition == "unsafe" else ""
     staging = args.output / f"Fleet-{version}-{args.platform}{suffix}"
     shutil.copytree(args.program, staging)
+    # Workflow artifacts drop the executable bit.
+    host = staging / "fleet"
+    if host.exists():
+        host.chmod(0o755)
     shutil.copytree(args.mods, staging / "mods")
     shutil.copy2(REPOSITORY_ROOT / "release" / "README-players.txt", staging / "README.txt")
     for archive_name, folder in GAME_FOLDERS.items():

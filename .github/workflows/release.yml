@@ -1,0 +1,103 @@
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish a GitHub release after packaging
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+
+  package:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, ubuntu-22.04, macos-15]
+        edition: [release, unsafe]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Name the platform
+        id: platform
+        shell: bash
+        run: |
+          case "$RUNNER_OS" in
+            Windows) echo "name=windows" >> "$GITHUB_OUTPUT" ;;
+            Linux) echo "name=linux" >> "$GITHUB_OUTPUT" ;;
+            macOS) echo "name=mac" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: actions/download-artifact@v4
+        with:
+          name: fleet-${{ steps.platform.outputs.name == 'mac' && 'macos' || steps.platform.outputs.name }}
+          path: program
+      - name: Download the games and Fleet's mods
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EDITION: ${{ matrix.edition }}
+          PLATFORM: ${{ steps.platform.outputs.name }}
+        run: |
+          mkdir -p games mods/oot mods/mm
+          if [ "$EDITION" = unsafe ]; then
+            gh release download nei-unbound-modders -R skijer/Shipwright -p "soh-unbound-unsafe-$PLATFORM.zip" -O games/ship.zip
+            gh release download nei-unbound-modders -R skijer/2ship2harkinian -p "2ship-unbound-unsafe-$PLATFORM.zip" -O games/2ship.zip
+          else
+            gh release download nei-unbound-release -R skijer/Shipwright -p "soh-$PLATFORM.zip" -O games/ship.zip
+            gh release download nei-unbound-release -R skijer/2ship2harkinian -p "2ship-$PLATFORM.zip" -O games/2ship.zip
+          fi
+          gh release download mods -R skijer/Shipwright -p combo_compatibility.o2r -p fleet_mm_assets.o2r -D mods/oot
+          gh release download mods -R skijer/2ship2harkinian -p combo_compatibility-mm.o2r -p fleet_oot_assets-mm.o2r -D mods/mm
+          mv mods/mm/combo_compatibility-mm.o2r mods/mm/combo_compatibility.o2r
+          mv mods/mm/fleet_oot_assets-mm.o2r mods/mm/fleet_oot_assets.o2r
+      - name: Assemble
+        shell: bash
+        run: >
+          python release/assemble_release.py --platform "${{ steps.platform.outputs.name }}"
+          --edition "${{ matrix.edition }}" --program program --games games --mods mods --output dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ steps.platform.outputs.name }}-${{ matrix.edition }}
+          path: dist/*.zip
+          retention-days: 3
+
+  publish:
+    if: inputs.publish
+    needs: package
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-*
+          path: dist
+          merge-multiple: true
+      # Two fixed pages whose ZIPs are replaced in place, like the games' download pages.
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          VERSION=$(cat VERSION)
+          publish() {
+            local tag="$1" title="$2" prerelease="$3" pattern="$4"
+            if ! gh release view "$tag" >/dev/null 2>&1; then
+              gh release create "$tag" --target "$GITHUB_SHA" --title "$title" --notes-file release/README-players.txt --latest=false
+            fi
+            gh release upload "$tag" $pattern --clobber
+            gh release edit "$tag" --title "$title" --notes-file release/README-players.txt --prerelease="$prerelease" \
+              --latest="$([ "$prerelease" = false ] && echo true || echo false)"
+          }
+          publish nei-unbound-release "Fleet $VERSION" false "dist/Fleet-windows.zip dist/Fleet-linux.zip dist/Fleet-mac.zip"
+          publish nei-unbound-modders "Fleet $VERSION — Unsafe edition" true "dist/Fleet-*-unsafe.zip"

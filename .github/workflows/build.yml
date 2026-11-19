@@ -1,0 +1,70 @@
+name: build
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            platform: windows
+          - os: ubuntu-22.04
+            platform: linux
+          - os: macos-15
+            platform: macos
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build libusb-1.0-0-dev libsdl2-dev libsdl2-net-dev libpng-dev libglew-dev \
+            nlohmann-json3-dev libspdlog-dev libzip-dev zipcmp zipmerge ziptool libbz2-dev \
+            libogg-dev libopus-dev libopusfile-dev libvorbis-dev libcurl4-openssl-dev
+      - name: Install tinyxml2
+        if: runner.os == 'Linux'
+        run: |
+          wget -q https://github.com/leethomason/tinyxml2/archive/refs/tags/10.0.0.tar.gz
+          tar -xzf 10.0.0.tar.gz
+          cmake -S tinyxml2-10.0.0 -B tinyxml2-build -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+          cmake --build tinyxml2-build --parallel
+          sudo cmake --install tinyxml2-build
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install ninja sdl2 sdl2_net libpng glew libzip nlohmann-json tinyxml2 spdlog libogg opus opusfile libvorbis
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build --config Release --parallel 3
+      - name: Test
+        run: ctest --test-dir build -C Release --output-on-failure
+      - name: Trace failing tests
+        if: failure() && runner.os == 'macOS'
+        run: |
+          for test in x64/Release/*_test; do
+            lldb --batch -o run -o bt -k bt -k quit -- "$test" || true
+          done
+      - name: Collect the program
+        shell: bash
+        run: |
+          mkdir -p artifact
+          for file in x64/Release/fleet x64/Release/fleet.exe x64/Release/libultraship.dll x64/Release/libultraship.so \
+                      x64/Release/libultraship.dylib; do
+            if [ -f "$file" ]; then
+              cp "$file" artifact/
+            fi
+          done
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fleet-${{ matrix.platform }}
+          path: artifact
+          retention-days: 3

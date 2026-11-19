@@ -1,0 +1,9 @@
+build/
+dist/
+out/
+.vs/
+x64/
+saves/
+build-all.local.ps1
+fleet.local.json
+CMakeUserPresets.json

@@ -41,6 +41,14 @@ jobs:
       - name: Install macOS dependencies
         if: runner.os == 'macOS'
         run: brew install ninja sdl2 sdl2_net libpng glew libzip nlohmann-json tinyxml2 spdlog libogg opus opusfile libvorbis
+      # vcpkg fetches upstream patches from github.com, which intermittently answers 503.
+      - name: Cache vcpkg packages
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ~/AppData/Local/vcpkg/archives
+          key: ${{ runner.os }}-vcpkg-${{ hashFiles('CMakeLists.txt', 'libultraship/cmake/automate-vcpkg.cmake') }}
+          restore-keys: ${{ runner.os }}-vcpkg-
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: Build

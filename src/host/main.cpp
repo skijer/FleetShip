@@ -31,7 +31,9 @@
 #include "SongWalk.h"
 #include "DropWalk.h"
 #include "FrameCapture.h"
+#include "ItemRain.h"
 #include "ItemWalk.h"
+#include "TransitionWalk.h"
 #include "SettingsSync.h"
 #include <ship/window/Window.h>
 #include <ship/window/gui/Gui.h>
@@ -97,6 +99,10 @@ struct Options {
     std::optional<GameIndex> crossWalkGame;
     int crossWalkRounds = 2;
     bool songWalk = false;
+    std::vector<std::string> itemRainGames;
+    int itemRainWaves = 10;
+    bool transitionWalk = false;
+    std::string transitionWalkOnly;
     bool smokeName = false;
     bool smokeNativeGeneration = false;
     bool smokePages = false;
@@ -139,6 +145,12 @@ int sCrossWalkRounds = 0;
 std::unique_ptr<CrossWalk> sCrossWalk;
 bool sSongWalkRequested = false;
 std::unique_ptr<SongWalk> sSongWalk;
+std::vector<std::string> sItemRainGames;
+int sItemRainWaves = 0;
+std::unique_ptr<ItemRain> sItemRain;
+bool sTransitionWalkRequested = false;
+std::string sTransitionWalkOnly;
+std::unique_ptr<TransitionWalk> sTransitionWalk;
 bool sSmokeCycleDone = false;
 bool sSmokeName = false;
 bool sSmokeNativeGeneration = false;
@@ -816,6 +828,49 @@ void AdvanceSongWalk(const char* game) {
     }
 }
 
+nlohmann::json RequestTest(const std::string& game, const std::string& op, const nlohmann::json& input) {
+    return nlohmann::json::parse(sGames[IndexOf(game.c_str())].module->Request(op, input.dump()), nullptr, false);
+}
+
+void TravelTo(const std::string& from, const std::string& to) {
+    const FleetDestination destination = { .game = sGames[IndexOf(to.c_str())].module->Name() };
+    RequestSwitch(from.c_str(), &destination);
+}
+
+std::filesystem::path CreateTestLog(const std::string& name) {
+    const auto log = InstallFolder() / "logs" / name;
+    std::filesystem::create_directories(log.parent_path());
+    return log;
+}
+
+std::unique_ptr<ItemRain> CreateItemRain() {
+    return std::make_unique<ItemRain>(sItemRainGames, sItemRainWaves, CreateTestLog("fleet-item-rain.jsonl"),
+                                      ItemRain::Host{ .request = RequestTest, .travel = TravelTo });
+}
+
+std::unique_ptr<TransitionWalk> CreateTransitionWalk() {
+    constexpr int kLowestResolution = 3;
+    // At native resolution the frame goes straight to the window and leaves no framebuffer to capture.
+    for (const GameIndex game : { Oot, Mm }) {
+        Ship::GameRegistry::Get(sGames[game].module->Name())
+            ->ConsoleVariables->SetInteger(CVAR_LOW_RES_MODE, kLowestResolution);
+    }
+    const auto session = nlohmann::json::parse(sSession.Description());
+    const nlohmann::json cross = session.at("seed").value("crossDungeonEntrances", nlohmann::json{});
+    return std::make_unique<TransitionWalk>(cross, sTransitionWalkOnly, CreateTestLog("fleet-transition-walk.jsonl"),
+                                            TransitionWalk::Host{ .request = RequestTest,
+                                                                  .travel = TravelTo,
+                                                                  .capture = FrameCapture::Save });
+}
+
+template <class Walk> void AdvanceTestWalk(Walk& walk, const char* game, const char* name) {
+    walk.Advance(game);
+    if (walk.IsFinished()) {
+        std::cout << "[fleet] " << name << " finished with " << walk.Failures() << " failures" << std::endl;
+        EndProcess(walk.Failures() == 0 ? 0 : 1);
+    }
+}
+
 void VerifySmokeGifts() {
     std::vector<std::string> missing;
     for (const auto& hosted : sGames) {
@@ -939,6 +994,14 @@ void CountSmokeFrame(GameIndex game) {
         }
         if (sSongWalkRequested && sSongWalk == nullptr && otherGameRan) {
             sSongWalk = CreateSongWalk();
+            return;
+        }
+        if (!sItemRainGames.empty() && sItemRain == nullptr && otherGameRan) {
+            sItemRain = CreateItemRain();
+            return;
+        }
+        if (sTransitionWalkRequested && sTransitionWalk == nullptr && otherGameRan) {
+            sTransitionWalk = CreateTransitionWalk();
             return;
         }
         if (sSmokeCycle && game == Mm && !sSmokeCycleDone) {
@@ -1144,6 +1207,10 @@ void FrameEnd(const char* game) {
         sCrossWalk->Advance(game);
     } else if (sSongWalk != nullptr) {
         AdvanceSongWalk(game);
+    } else if (sItemRain != nullptr) {
+        AdvanceTestWalk(*sItemRain, game, "item rain");
+    } else if (sTransitionWalk != nullptr) {
+        AdvanceTestWalk(*sTransitionWalk, game, "transition walk");
     } else if (sSaveMenu == nullptr || !sSaveMenu->Enabled()) {
         CountSmokeFrame(IndexOf(game));
     }
@@ -1382,6 +1449,15 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             options.crossWalkRounds = std::atoi(value.c_str());
         } else if (flag == "--song-walk" && (value == "0" || value == "1")) {
             options.songWalk = value == "1";
+        } else if (flag == "--item-rain" && (value == "oot" || value == "mm" || value == "both")) {
+            options.itemRainGames = value == "both" ? std::vector<std::string>{ "mm", "oot" }
+                                                    : std::vector<std::string>{ value };
+        } else if (flag == "--item-rain-waves" && std::atoi(value.c_str()) > 0) {
+            options.itemRainWaves = std::atoi(value.c_str());
+        } else if (flag == "--transition-walk" && (value == "0" || value == "1")) {
+            options.transitionWalk = value == "1";
+        } else if (flag == "--transition-walk-only") {
+            options.transitionWalkOnly = value;
 #endif
         } else {
             return false;
@@ -1549,6 +1625,10 @@ int RunFleet(int argc, char* argv[]) {
     sCrossWalkGame = options.crossWalkGame;
     sCrossWalkRounds = options.crossWalkRounds;
     sSongWalkRequested = options.songWalk;
+    sItemRainGames = options.itemRainGames;
+    sItemRainWaves = options.itemRainWaves;
+    sTransitionWalkRequested = options.transitionWalk;
+    sTransitionWalkOnly = options.transitionWalkOnly;
     sSmokeName = options.smokeName;
     sSmokeNativeGeneration = options.smokeNativeGeneration;
     sSmokePages = options.smokePages;

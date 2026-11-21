@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -10,19 +11,23 @@
 
 #include <nlohmann/json.hpp>
 
-// Rains waves of seed items around Link in each game's field, then lets the other game take its deliveries.
+// Per game: draws and announces every foreign item next to Link, checks custom C buttons (MM), rains waves of seed
+// items around Link in the field, then lets the other game take its deliveries.
 class ItemRain {
   public:
     struct Host {
         std::function<nlohmann::json(const std::string& game, const std::string& op, const nlohmann::json& input)>
             request;
         std::function<void(const std::string& from, const std::string& to)> travel;
+        std::function<double()> slowestReportMilliseconds;
     };
 
-    ItemRain(std::vector<std::string> games, int waves, const std::filesystem::path& logPath, Host host)
-        : mGames(std::move(games)), mWaves(waves), mLog(logPath), mHost(std::move(host)) {
-        std::cout << "[fleet] item rain: " << mWaves << " waves of " << kDropsPerWave << " in "
-                  << mGames.size() << " games into " << logPath.string() << std::endl;
+    ItemRain(std::vector<std::string> games, int waves, double saveBudgetMilliseconds,
+             const std::filesystem::path& logPath, Host host)
+        : mGames(std::move(games)), mWaves(waves), mSaveBudgetMilliseconds(saveBudgetMilliseconds), mLog(logPath),
+          mHost(std::move(host)) {
+        std::cout << "[fleet] item rain: " << mWaves << " waves of " << kDropsPerWave << " in " << mGames.size()
+                  << " games into " << logPath.string() << std::endl;
     }
 
     bool IsFinished() const {
@@ -42,6 +47,12 @@ class ItemRain {
             case Phase::GoToField:
                 StartField(active, game);
                 break;
+            case Phase::Showcase:
+                RunShowcase(active, game);
+                break;
+            case Phase::Buttons:
+                CheckButtons(active, game);
+                break;
             case Phase::Raining:
                 Rain(active, game);
                 break;
@@ -55,7 +66,7 @@ class ItemRain {
     }
 
   private:
-    enum class Phase { GoToGame, GoToField, Raining, Delivering };
+    enum class Phase { GoToGame, GoToField, Showcase, Buttons, Raining, Delivering };
 
     static constexpr int kDropsPerWave = 24;
     static constexpr int kWaveFrames = 150;
@@ -63,6 +74,8 @@ class ItemRain {
     static constexpr int kParkedCatchUpFrames = 420;
     static constexpr int kDeliveryFrames = 240;
     static constexpr int kTimeoutFrames = 2400;
+    static constexpr int kShowcaseFramesPerKey = 120;
+    static constexpr int kButtonCheckFrames = 120;
 
     std::string OtherGame(const std::string& game) const {
         return game == "oot" ? "mm" : "oot";
@@ -101,11 +114,55 @@ class ItemRain {
         }
         if (++mFrames > kFieldFrames && IsReady(active, game)) {
             mRecord["field"] = Status(game).value("scene", -1);
-            mPhase = Phase::Raining;
+            mPhase = Phase::Showcase;
             mFrames = 0;
         } else if (mFrames > kTimeoutFrames) {
             Finish(false, "never reached the field");
         }
+    }
+
+    // Covers a frame drawing the other game's item models (segment state) and its textbox icons (archive lookup).
+    void RunShowcase(const std::string& active, const std::string& game) {
+        if (active != game) {
+            Finish(false, "left " + game + " during the foreign showcase");
+            return;
+        }
+        if (mFrames++ == 0) {
+            mHost.request(game, "TestForeignShowcase", nlohmann::json::object());
+            return;
+        }
+        const nlohmann::json showcase = Status(game).value("showcase", nlohmann::json::object());
+        const int timeout = kTimeoutFrames + showcase.value("keys", 0) * kShowcaseFramesPerKey;
+        if (showcase.value("phase", "") == "done") {
+            mRecord["showcase"] = showcase;
+            mPhase = game == "mm" ? Phase::Buttons : Phase::Raining;
+            mFrames = 0;
+        } else if (mFrames > timeout) {
+            mRecord["showcase"] = showcase;
+            mProblems.push_back("foreign showcase never finished");
+            mPhase = Phase::Raining;
+            mFrames = 0;
+        }
+    }
+
+    void CheckButtons(const std::string& active, const std::string& game) {
+        if (mFrames++ == 0) {
+            mHost.request(game, "TestCustomButtons", nlohmann::json::object());
+            return;
+        }
+        const nlohmann::json status = Status(game);
+        if (status.contains("buttons")) {
+            mRecord["buttons"] = status.at("buttons");
+            if (!status.at("buttons").value("passed", false)) {
+                mProblems.push_back("custom C buttons lost or resurrected a key");
+            }
+        } else if (mFrames <= kButtonCheckFrames) {
+            return;
+        } else {
+            mProblems.push_back("custom C button check never ran");
+        }
+        mPhase = Phase::Raining;
+        mFrames = 0;
     }
 
     void Rain(const std::string& active, const std::string& game) {
@@ -146,10 +203,33 @@ class ItemRain {
         }
     }
 
+    // Each check saves the game and the host session on the frame it is collected, so these are frame stalls.
+    void RecordTimings() {
+        const double gameSave = std::max(mRecord["rain"].value("slowestSaveMs", 0.0),
+                                         mRecord.value("other", nlohmann::json::object()).value("slowestSaveMs", 0.0));
+        const double hostReport = mHost.slowestReportMilliseconds ? mHost.slowestReportMilliseconds() : 0.0;
+        mRecord["timings"] = { { "slowestGameSaveMs", gameSave }, { "slowestHostReportMs", hostReport } };
+        if (mSaveBudgetMilliseconds > 0.0 && std::max(gameSave, hostReport) > mSaveBudgetMilliseconds) {
+            mProblems.push_back("a check stalled a frame for more than " + std::to_string(mSaveBudgetMilliseconds) +
+                                " ms");
+        }
+    }
+
     void Finish(bool passed, const std::string& reason) {
-        mRecord["passed"] = passed;
+        if (mRecord.contains("rain")) {
+            RecordTimings();
+        }
         if (!reason.empty()) {
-            mRecord["reason"] = reason;
+            mProblems.insert(mProblems.begin(), reason);
+        }
+        passed = passed && mProblems.empty();
+        mRecord["passed"] = passed;
+        if (!mProblems.empty()) {
+            std::string joined = mProblems.front();
+            for (size_t index = 1; index < mProblems.size(); index++) {
+                joined += "; " + mProblems[index];
+            }
+            mRecord["reason"] = joined;
         }
         mLog << mRecord.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace) << std::endl;
         std::cout << "[fleet] item rain " << (passed ? "PASS" : "FAIL") << ": " << mRecord.dump() << std::endl;
@@ -159,10 +239,12 @@ class ItemRain {
         mFrames = 0;
         mDeliveryFrames = 0;
         mWave = 0;
+        mProblems.clear();
     }
 
     std::vector<std::string> mGames;
     int mWaves;
+    double mSaveBudgetMilliseconds;
     std::ofstream mLog;
     Host mHost;
     size_t mGame = 0;
@@ -171,5 +253,6 @@ class ItemRain {
     int mDeliveryFrames = 0;
     int mWave = 0;
     nlohmann::json mRecord;
+    std::vector<std::string> mProblems;
     int mFailures = 0;
 };

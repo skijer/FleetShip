@@ -1,8 +1,11 @@
 #include "ComboSession.h"
 #include <algorithm>
+#include <chrono>
 #include <cstring>
 
 #include <fstream>
+#include <map>
+#include <utility>
 #include <stdexcept>
 
 #include "rando/CrossForeign.h"
@@ -32,6 +35,31 @@ void WriteJson(const std::filesystem::path& path, const nlohmann::json& value) {
 
 bool IsGame(const std::string& game) {
     return game == "oot" || game == "mm";
+}
+
+// RebuildDeliveries runs on every check; copying these seed sections per item made it grow with progress.
+const nlohmann::json& SeedArray(const nlohmann::json& seed, const char* key) {
+    static const nlohmann::json kEmpty = nlohmann::json::array();
+    const auto found = seed.find(key);
+    return found != seed.end() ? *found : kEmpty;
+}
+
+const nlohmann::json& SeedObject(const nlohmann::json& seed, const char* key) {
+    static const nlohmann::json kEmpty = nlohmann::json::object();
+    const auto found = seed.find(key);
+    return found != seed.end() ? *found : kEmpty;
+}
+
+using ForeignIndex = std::map<std::pair<std::string, std::string>, const nlohmann::json*>;
+
+ForeignIndex IndexForeignByCheck(const nlohmann::json& seed) {
+    ForeignIndex index;
+    for (const auto& foreign : seed.at("foreign")) {
+        index.emplace(std::make_pair(foreign.at("checkGame").get<std::string>(),
+                                     foreign.at("checkName").get<std::string>()),
+                      &foreign);
+    }
+    return index;
 }
 
 } // namespace
@@ -327,12 +355,19 @@ bool ComboSession::ReportObtained(const std::string& game, const std::string& ch
     if (mObtained.contains(key)) {
         return true;
     }
+    const auto start = std::chrono::steady_clock::now();
     auto next = mObtained;
     next.insert(key);
     Persist(next, mTiers, mActiveGame, mClearedGames);
     mObtained = std::move(next);
     RebuildDeliveries();
+    const std::chrono::duration<double, std::milli> elapsed = std::chrono::steady_clock::now() - start;
+    mSlowestReportMilliseconds = std::max(mSlowestReportMilliseconds, elapsed.count());
     return true;
+}
+
+double ComboSession::SlowestReportMilliseconds() const {
+    return mSlowestReportMilliseconds;
 }
 
 namespace {
@@ -452,12 +487,12 @@ std::optional<std::string> ComboSession::TwinName(const std::string& home, const
     if (target == home) {
         return item;
     }
-    const nlohmann::json goal = mSeed.value("goal", nlohmann::json::object());
+    const nlohmann::json& goal = SeedObject(mSeed, "goal");
     const bool sharesPieces = goal.value("type", "bosses") == "triforceHunt" || goal.value("pieces", 0) > 0;
     if (sharesPieces && (item == "Triforce Piece" || item == "Piece of the Triforce")) {
         return std::string(target == "oot" ? "Triforce Piece" : "Piece of the Triforce");
     }
-    const uint64_t mask = ComboRando::SharedMaskFromKeys(mSeed.value("sharedItems", nlohmann::json::array()));
+    const uint64_t mask = ComboRando::SharedMaskFromKeys(SeedArray(mSeed, "sharedItems"));
     const auto homeGame = home == "oot" ? ComboRando::GAME_OOT : ComboRando::GAME_MM;
     if (SharesBottles() && ComboRando::FindBottleTwin(homeGame, item) != nullptr) {
         return std::nullopt;
@@ -474,7 +509,7 @@ std::optional<std::string> ComboSession::TwinName(const std::string& home, const
         const std::string twin = target == "oot" ? definition.ootName : definition.mmName;
         return twin.empty() ? std::nullopt : std::optional<std::string>(twin);
     }
-    for (const auto& pair : mSeed.value("modFamilies", nlohmann::json::array())) {
+    for (const auto& pair : SeedArray(mSeed, "modFamilies")) {
         if (!pair.value("key", "").empty() && pair.value(home, "") == item) {
             return pair.value(target, item);
         }
@@ -484,8 +519,8 @@ std::optional<std::string> ComboSession::TwinName(const std::string& home, const
 
 std::optional<std::string> ComboSession::MaskAlias(const std::string& game, const std::string& name) const {
     const std::string other = game == "oot" ? "mm" : "oot";
-    const uint64_t mask = ComboRando::SharedMaskFromKeys(mSeed.value("sharedItems", nlohmann::json::array()));
-    const nlohmann::json modPairs = mSeed.value("modFamilies", nlohmann::json::array());
+    const uint64_t mask = ComboRando::SharedMaskFromKeys(SeedArray(mSeed, "sharedItems"));
+    const nlohmann::json& modPairs = SeedArray(mSeed, "modFamilies");
     for (int family = 0; family < ComboRando::SF_COUNT; family++) {
         const auto& definition = ComboRando::SharedFamilyByIndex(family);
         if ((mask & (uint64_t{ 1 } << family)) == 0 || !definition.isMask) {
@@ -565,7 +600,7 @@ nlohmann::json ComboSession::GivableItems() const {
 }
 
 void ComboSession::RebuildDeliveries() {
-    const uint64_t mask = ComboRando::SharedMaskFromKeys(mSeed.value("sharedItems", nlohmann::json::array()));
+    const uint64_t mask = ComboRando::SharedMaskFromKeys(SeedArray(mSeed, "sharedItems"));
     std::map<std::string, nlohmann::json> deliveries = { { "oot", nlohmann::json::array() },
                                                          { "mm", nlohmann::json::array() } };
     for (const char* game : { "oot", "mm" }) {
@@ -576,6 +611,7 @@ void ComboSession::RebuildDeliveries() {
                                          { "trap", false } });
         }
     }
+    const ForeignIndex foreignByCheck = IndexForeignByCheck(mSeed);
     for (const char* source : { "oot", "mm" }) {
         const auto& placements = mSeed.at(source).at("placements");
         for (const auto& [check, placed] : placements.items()) {
@@ -585,16 +621,13 @@ void ComboSession::RebuildDeliveries() {
             }
             std::string home = source;
             std::string item = ComboRando::StripGameSuffix(placed.get<std::string>());
-            bool foreignItem = false;
+            const auto foreign = foreignByCheck.find({ source, check });
+            const bool foreignItem = foreign != foreignByCheck.end();
             bool trap = false;
-            for (const auto& foreign : mSeed.at("foreign")) {
-                if (foreign.at("checkGame") == source && foreign.at("checkName") == check) {
-                    home = foreign.at("itemGame");
-                    item = foreign.at("itemName");
-                    trap = foreign.value("trap", false);
-                    foreignItem = true;
-                    break;
-                }
+            if (foreignItem) {
+                home = foreign->second->at("itemGame");
+                item = foreign->second->at("itemName");
+                trap = foreign->second->value("trap", false);
             }
             for (const char* target : { "oot", "mm" }) {
                 if (!foreignItem && target == home) {
@@ -652,7 +685,7 @@ void ComboSession::RebuildDeliveries() {
                                { "owned", IsReadAsOwned(family) },
                                { "tier", std::string(game) == "mm" ? std::min(tier, MmTierCap(family)) : tier } });
         }
-        for (const auto& pair : mSeed.value("modFamilies", nlohmann::json::array())) {
+        for (const auto& pair : SeedArray(mSeed, "modFamilies")) {
             if (!IsPairReadAsOwned(pair) || pair.value(game, "").empty()) {
                 continue;
             }

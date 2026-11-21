@@ -101,6 +101,7 @@ struct Options {
     bool songWalk = false;
     std::vector<std::string> itemRainGames;
     int itemRainWaves = 10;
+    double itemRainSaveBudgetMs = 0.0;
     bool transitionWalk = false;
     std::string transitionWalkOnly;
     bool smokeName = false;
@@ -147,6 +148,7 @@ bool sSongWalkRequested = false;
 std::unique_ptr<SongWalk> sSongWalk;
 std::vector<std::string> sItemRainGames;
 int sItemRainWaves = 0;
+double sItemRainSaveBudgetMs = 0.0;
 std::unique_ptr<ItemRain> sItemRain;
 bool sTransitionWalkRequested = false;
 std::string sTransitionWalkOnly;
@@ -844,8 +846,11 @@ std::filesystem::path CreateTestLog(const std::string& name) {
 }
 
 std::unique_ptr<ItemRain> CreateItemRain() {
-    return std::make_unique<ItemRain>(sItemRainGames, sItemRainWaves, CreateTestLog("fleet-item-rain.jsonl"),
-                                      ItemRain::Host{ .request = RequestTest, .travel = TravelTo });
+    return std::make_unique<ItemRain>(
+        sItemRainGames, sItemRainWaves, sItemRainSaveBudgetMs, CreateTestLog("fleet-item-rain.jsonl"),
+        ItemRain::Host{ .request = RequestTest,
+                        .travel = TravelTo,
+                        .slowestReportMilliseconds = [] { return sSession.SlowestReportMilliseconds(); } });
 }
 
 std::unique_ptr<TransitionWalk> CreateTransitionWalk() {
@@ -1454,6 +1459,8 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
                                                     : std::vector<std::string>{ value };
         } else if (flag == "--item-rain-waves" && std::atoi(value.c_str()) > 0) {
             options.itemRainWaves = std::atoi(value.c_str());
+        } else if (flag == "--save-budget-ms" && std::atof(value.c_str()) > 0.0) {
+            options.itemRainSaveBudgetMs = std::atof(value.c_str());
         } else if (flag == "--transition-walk" && (value == "0" || value == "1")) {
             options.transitionWalk = value == "1";
         } else if (flag == "--transition-walk-only") {
@@ -1627,6 +1634,7 @@ int RunFleet(int argc, char* argv[]) {
     sSongWalkRequested = options.songWalk;
     sItemRainGames = options.itemRainGames;
     sItemRainWaves = options.itemRainWaves;
+    sItemRainSaveBudgetMs = options.itemRainSaveBudgetMs;
     sTransitionWalkRequested = options.transitionWalk;
     sTransitionWalkOnly = options.transitionWalkOnly;
     sSmokeName = options.smokeName;

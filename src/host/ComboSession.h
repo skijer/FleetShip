@@ -21,6 +21,7 @@ class ComboSession {
     const std::string& Deliveries(const std::string& game) const;
     const std::string& SharedTiers(const std::string& game) const;
     bool ReportObtained(const std::string& game, const std::string& check);
+    double SlowestReportMilliseconds() const;
     bool GiveItem(const std::string& game, const std::string& item);
     bool GiveItems(const std::vector<std::pair<std::string, std::string>>& items);
     nlohmann::json GivableItems() const;
@@ -67,4 +68,5 @@ class ComboSession {
     std::map<std::string, std::set<std::string>> mListedItems;
     std::string mActiveGame;
     std::atomic<bool> mCommitRequested = false;
+    double mSlowestReportMilliseconds = 0.0;
 };

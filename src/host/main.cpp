@@ -32,6 +32,7 @@
 #include "DropWalk.h"
 #include "FrameCapture.h"
 #include "ItemRain.h"
+#include "ShareWalk.h"
 #include "ItemWalk.h"
 #include "TransitionWalk.h"
 #include "SettingsSync.h"
@@ -102,6 +103,8 @@ struct Options {
     std::vector<std::string> itemRainGames;
     int itemRainWaves = 10;
     double itemRainSaveBudgetMs = 0.0;
+    std::string shareWalkGame;
+    std::string shareWalkBaseline;
     bool transitionWalk = false;
     std::string transitionWalkOnly;
     bool smokeName = false;
@@ -150,6 +153,9 @@ std::vector<std::string> sItemRainGames;
 int sItemRainWaves = 0;
 double sItemRainSaveBudgetMs = 0.0;
 std::unique_ptr<ItemRain> sItemRain;
+std::string sShareWalkGame;
+std::string sShareWalkBaseline;
+std::unique_ptr<ShareWalk> sShareWalk;
 bool sTransitionWalkRequested = false;
 std::string sTransitionWalkOnly;
 std::unique_ptr<TransitionWalk> sTransitionWalk;
@@ -853,6 +859,30 @@ std::unique_ptr<ItemRain> CreateItemRain() {
                         .slowestReportMilliseconds = [] { return sSession.SlowestReportMilliseconds(); } });
 }
 
+std::unique_ptr<ShareWalk> CreateShareWalk() {
+    const nlohmann::json seed = nlohmann::json::parse(sSession.Description()).at("seed");
+    const nlohmann::json baseline = sShareWalkBaseline.empty()
+                                        ? nlohmann::json::object()
+                                        : nlohmann::json::parse(std::ifstream(sShareWalkBaseline), nullptr, false);
+    return std::make_unique<ShareWalk>(
+        sShareWalkGame, seed, baseline.is_object() ? baseline : nlohmann::json::object(),
+        CreateTestLog("fleet-share-walk-" + sShareWalkGame + ".jsonl"),
+        ShareWalk::Host{ .request = RequestTest,
+                         .travel = TravelTo,
+                         .give = [](const auto& gifts) { sSession.GiveItems(gifts); },
+                         .deliveries =
+                             [](const std::string& game) {
+                                 return nlohmann::json::parse(GetDeliveries(game.c_str()), nullptr, false);
+                             },
+                         .items = [](const std::string& game) {
+                             std::set<std::string> names;
+                             for (const auto& [name, label] : ListItemsOf(sGames[IndexOf(game.c_str())])) {
+                                 names.insert(name);
+                             }
+                             return names;
+                         } });
+}
+
 std::unique_ptr<TransitionWalk> CreateTransitionWalk() {
     constexpr int kLowestResolution = 3;
     // At native resolution the frame goes straight to the window and leaves no framebuffer to capture.
@@ -1003,6 +1033,10 @@ void CountSmokeFrame(GameIndex game) {
         }
         if (!sItemRainGames.empty() && sItemRain == nullptr && otherGameRan) {
             sItemRain = CreateItemRain();
+            return;
+        }
+        if (!sShareWalkGame.empty() && sShareWalk == nullptr && otherGameRan) {
+            sShareWalk = CreateShareWalk();
             return;
         }
         if (sTransitionWalkRequested && sTransitionWalk == nullptr && otherGameRan) {
@@ -1214,6 +1248,8 @@ void FrameEnd(const char* game) {
         AdvanceSongWalk(game);
     } else if (sItemRain != nullptr) {
         AdvanceTestWalk(*sItemRain, game, "item rain");
+    } else if (sShareWalk != nullptr) {
+        AdvanceTestWalk(*sShareWalk, game, "share walk");
     } else if (sTransitionWalk != nullptr) {
         AdvanceTestWalk(*sTransitionWalk, game, "transition walk");
     } else if (sSaveMenu == nullptr || !sSaveMenu->Enabled()) {
@@ -1459,6 +1495,10 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
                                                     : std::vector<std::string>{ value };
         } else if (flag == "--item-rain-waves" && std::atoi(value.c_str()) > 0) {
             options.itemRainWaves = std::atoi(value.c_str());
+        } else if (flag == "--share-walk" && (value == "oot" || value == "mm")) {
+            options.shareWalkGame = value;
+        } else if (flag == "--share-walk-baseline") {
+            options.shareWalkBaseline = value;
         } else if (flag == "--save-budget-ms" && std::atof(value.c_str()) > 0.0) {
             options.itemRainSaveBudgetMs = std::atof(value.c_str());
         } else if (flag == "--transition-walk" && (value == "0" || value == "1")) {
@@ -1635,6 +1675,8 @@ int RunFleet(int argc, char* argv[]) {
     sItemRainGames = options.itemRainGames;
     sItemRainWaves = options.itemRainWaves;
     sItemRainSaveBudgetMs = options.itemRainSaveBudgetMs;
+    sShareWalkGame = options.shareWalkGame;
+    sShareWalkBaseline = options.shareWalkBaseline;
     sTransitionWalkRequested = options.transitionWalk;
     sTransitionWalkOnly = options.transitionWalkOnly;
     sSmokeName = options.smokeName;

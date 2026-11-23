@@ -1,0 +1,1205 @@
+{
+  "description": "Pairs Fleet formed on 2026-11-22 with every NEI mod installed in both games. A seed made with the same mods must form all of them unless they were unshared; newer mods only add pairs.",
+  "pairs": [
+    {
+      "key": "banjo_mask.flight_pad",
+      "oot": "banjo_mask.flight_pad",
+      "mm": "banjo_mask.flight_pad",
+      "label": "Flight Pad"
+    },
+    {
+      "key": "banjo_mask.mask",
+      "oot": "banjo_mask.mask",
+      "mm": "banjo_mask.mask",
+      "label": "Banjo Mask"
+    },
+    {
+      "key": "banjo_mask.move.beak_bomb",
+      "oot": "banjo_mask.move.beak_bomb",
+      "mm": "banjo_mask.move.beak_bomb",
+      "label": "Beak Bomb"
+    },
+    {
+      "key": "banjo_mask.move.beak_buster",
+      "oot": "banjo_mask.move.beak_buster",
+      "mm": "banjo_mask.move.beak_buster",
+      "label": "Beak Buster"
+    },
+    {
+      "key": "banjo_mask.move.eggs",
+      "oot": "banjo_mask.move.eggs",
+      "mm": "banjo_mask.move.eggs",
+      "label": "Egg Firing"
+    },
+    {
+      "key": "banjo_mask.move.flight",
+      "oot": "banjo_mask.move.flight",
+      "mm": "banjo_mask.move.flight",
+      "label": "Fly"
+    },
+    {
+      "key": "banjo_mask.move.shock_spring_jump",
+      "oot": "banjo_mask.move.shock_spring_jump",
+      "mm": "banjo_mask.move.shock_spring_jump",
+      "label": "Shock Spring Jump"
+    },
+    {
+      "key": "banjo_mask.move.stilt_stride",
+      "oot": "banjo_mask.move.stilt_stride",
+      "mm": "banjo_mask.move.stilt_stride",
+      "label": "Stilt Stride"
+    },
+    {
+      "key": "banjo_mask.move.talon_trot",
+      "oot": "banjo_mask.move.talon_trot",
+      "mm": "banjo_mask.move.talon_trot",
+      "label": "Talon Trot"
+    },
+    {
+      "key": "banjo_mask.move.turbo_talon_trot",
+      "oot": "banjo_mask.move.turbo_talon_trot",
+      "mm": "banjo_mask.move.turbo_talon_trot",
+      "label": "Turbo Talon Trot"
+    },
+    {
+      "key": "banjo_mask.move.wonderwing",
+      "oot": "banjo_mask.move.wonderwing",
+      "mm": "banjo_mask.move.wonderwing",
+      "label": "Wonderwing"
+    },
+    {
+      "key": "banjo_mask.shock_spring_pad",
+      "oot": "banjo_mask.shock_spring_pad",
+      "mm": "banjo_mask.shock_spring_pad",
+      "label": "Shock Spring Pad"
+    },
+    {
+      "key": "fleet.bottle.empty",
+      "oot": "Empty Bottle",
+      "mm": "Empty Bottle",
+      "label": "Empty Bottle"
+    },
+    {
+      "key": "fleet.bottle.milk",
+      "oot": "Bottle with Milk",
+      "mm": "Bottle of Milk",
+      "label": "Bottle with Milk"
+    },
+    {
+      "key": "fleet.bottle.red_potion",
+      "oot": "Bottle with Red Potion",
+      "mm": "Bottle with Red Potion",
+      "label": "Bottle with Red Potion"
+    },
+    {
+      "key": "fleet.soul.armos",
+      "oot": "Soul of Armos",
+      "mm": "Soul of Armos",
+      "label": "Soul of Armos"
+    },
+    {
+      "key": "fleet.soul.beamos",
+      "oot": "Soul of Beamos",
+      "mm": "Soul of Beamos",
+      "label": "Soul of Beamos"
+    },
+    {
+      "key": "fleet.soul.bubble",
+      "oot": "Soul of Bubbles",
+      "mm": "Soul of Bubbles",
+      "label": "Soul of Bubbles"
+    },
+    {
+      "key": "fleet.soul.deku_baba",
+      "oot": "Soul of Deku Babas",
+      "mm": "Soul of Deku Babas",
+      "label": "Soul of Deku Babas"
+    },
+    {
+      "key": "fleet.soul.dodongo",
+      "oot": "Soul of Dodongos",
+      "mm": "Soul of Dodongos",
+      "label": "Soul of Dodongos"
+    },
+    {
+      "key": "fleet.soul.freezard",
+      "oot": "Soul of Freezards",
+      "mm": "Soul of Freezards",
+      "label": "Soul of Freezards"
+    },
+    {
+      "key": "fleet.soul.gerudo_fighter",
+      "oot": "Soul of Gerudo Fighters",
+      "mm": "Soul of Pirates",
+      "label": "Soul of Gerudo Fighters"
+    },
+    {
+      "key": "fleet.soul.guay",
+      "oot": "Soul of Guays",
+      "mm": "Soul of Guays",
+      "label": "Soul of Guays"
+    },
+    {
+      "key": "fleet.soul.iron_knuckle",
+      "oot": "Soul of Iron Knuckles",
+      "mm": "Soul of Iron Knuckles",
+      "label": "Soul of Iron Knuckles"
+    },
+    {
+      "key": "fleet.soul.keese",
+      "oot": "Soul of Keese",
+      "mm": "Soul of Keese",
+      "label": "Soul of Keese"
+    },
+    {
+      "key": "fleet.soul.leever",
+      "oot": "Soul of Leevers",
+      "mm": "Soul of Leevers",
+      "label": "Soul of Leevers"
+    },
+    {
+      "key": "fleet.soul.like_like",
+      "oot": "Soul of Like Likes",
+      "mm": "Soul of Like Likes",
+      "label": "Soul of Like Likes"
+    },
+    {
+      "key": "fleet.soul.mad_scrub",
+      "oot": "Soul of Mad Scrubs",
+      "mm": "Soul of Mad Scrubs",
+      "label": "Soul of Mad Scrubs"
+    },
+    {
+      "key": "fleet.soul.octorok",
+      "oot": "Soul of Octoroks",
+      "mm": "Soul of Octoroks",
+      "label": "Soul of Octoroks"
+    },
+    {
+      "key": "fleet.soul.peahat",
+      "oot": "Soul of Peahats",
+      "mm": "Soul of Peahats",
+      "label": "Soul of Peahats"
+    },
+    {
+      "key": "fleet.soul.poe",
+      "oot": "Soul of Poes",
+      "mm": "Soul of Poes",
+      "label": "Soul of Poes"
+    },
+    {
+      "key": "fleet.soul.redead",
+      "oot": "Soul of Redeads",
+      "mm": "Soul of Redeads",
+      "label": "Soul of Redeads"
+    },
+    {
+      "key": "fleet.soul.shellblade",
+      "oot": "Soul of Shellblades",
+      "mm": "Soul of Shellblades",
+      "label": "Soul of Shellblades"
+    },
+    {
+      "key": "fleet.soul.skulltula",
+      "oot": "Soul of Skulltulas",
+      "mm": "Soul of Skulltulas",
+      "label": "Soul of Skulltulas"
+    },
+    {
+      "key": "fleet.soul.stalchild",
+      "oot": "Soul of Stalchildren",
+      "mm": "Soul of Stalchildren",
+      "label": "Soul of Stalchildren"
+    },
+    {
+      "key": "fleet.soul.tektite",
+      "oot": "Soul of Tektites",
+      "mm": "Soul of Tektites",
+      "label": "Soul of Tektites"
+    },
+    {
+      "key": "fleet.soul.wallmaster",
+      "oot": "Soul of Wallmasters",
+      "mm": "Soul of Wallmasters",
+      "label": "Soul of Wallmasters"
+    },
+    {
+      "key": "fleet.soul.wolfos",
+      "oot": "Soul of Wolfos",
+      "mm": "Soul of Wolfos",
+      "label": "Soul of Wolfos"
+    },
+    {
+      "key": "mario_mask.crouch",
+      "oot": "mario_mask.crouch",
+      "mm": "mario_mask.crouch",
+      "label": "Crouch"
+    },
+    {
+      "key": "mario_mask.mask",
+      "oot": "mario_mask.mask",
+      "mm": "mario_mask.mask",
+      "label": "Mario Mask"
+    },
+    {
+      "key": "mario_mask.metal_cap",
+      "oot": "mario_mask.metal_cap",
+      "mm": "mario_mask.metal_cap",
+      "label": "Metal Cap"
+    },
+    {
+      "key": "mario_mask.punch",
+      "oot": "mario_mask.punch",
+      "mm": "mario_mask.punch",
+      "label": "Punch"
+    },
+    {
+      "key": "mario_mask.vanish_cap",
+      "oot": "mario_mask.vanish_cap",
+      "mm": "mario_mask.vanish_cap",
+      "label": "Vanish Cap"
+    },
+    {
+      "key": "mario_mask.wing_cap",
+      "oot": "mario_mask.wing_cap",
+      "mm": "mario_mask.wing_cap",
+      "label": "Wing Cap"
+    },
+    {
+      "key": "mm.mask.all_night",
+      "oot": "mm.mask.all_night",
+      "mm": "All-Night Mask",
+      "label": "All-Night Mask"
+    },
+    {
+      "key": "mm.mask.blast",
+      "oot": "mm.mask.blast",
+      "mm": "Blast Mask",
+      "label": "Blast Mask"
+    },
+    {
+      "key": "mm.mask.bremen",
+      "oot": "mm.mask.bremen",
+      "mm": "Bremen Mask",
+      "label": "Bremen Mask"
+    },
+    {
+      "key": "mm.mask.captain",
+      "oot": "mm.mask.captain",
+      "mm": "Captain's Hat",
+      "label": "Captain's Hat"
+    },
+    {
+      "key": "mm.mask.circus_leader",
+      "oot": "mm.mask.circus_leader",
+      "mm": "Circus Leader's Mask",
+      "label": "Circus Leader's Mask"
+    },
+    {
+      "key": "mm.mask.couple",
+      "oot": "mm.mask.couple",
+      "mm": "Couples Mask",
+      "label": "Couple's Mask"
+    },
+    {
+      "key": "mm.mask.don_gero",
+      "oot": "mm.mask.don_gero",
+      "mm": "Don Gero Mask",
+      "label": "Don Gero's Mask"
+    },
+    {
+      "key": "mm.mask.giant",
+      "oot": "mm.mask.giant",
+      "mm": "Giant's Mask",
+      "label": "Giant's Mask"
+    },
+    {
+      "key": "mm.mask.gibdo",
+      "oot": "mm.mask.gibdo",
+      "mm": "Gibdo Mask",
+      "label": "Gibdo Mask"
+    },
+    {
+      "key": "mm.mask.great_fairy",
+      "oot": "mm.mask.great_fairy",
+      "mm": "Great Fairy Mask",
+      "label": "Great Fairy's Mask"
+    },
+    {
+      "key": "mm.mask.kamaro",
+      "oot": "mm.mask.kamaro",
+      "mm": "Kamaro's Mask",
+      "label": "Kamaro's Mask"
+    },
+    {
+      "key": "mm.mask.postman",
+      "oot": "mm.mask.postman",
+      "mm": "Postman's Hat",
+      "label": "Postman's Hat"
+    },
+    {
+      "key": "mm.mask.romani",
+      "oot": "mm.mask.romani",
+      "mm": "Romani's Mask",
+      "label": "Romani's Mask"
+    },
+    {
+      "key": "mm.mask.scents",
+      "oot": "mm.mask.scents",
+      "mm": "Mask of Scents",
+      "label": "Mask of Scents"
+    },
+    {
+      "key": "mm.mask.stone",
+      "oot": "mm.mask.stone",
+      "mm": "Stone Mask",
+      "label": "Stone Mask"
+    },
+    {
+      "key": "mm.mirror_shield",
+      "oot": "mm.mirror_shield",
+      "mm": "Mirror Shield",
+      "label": "Shield of Ikana"
+    },
+    {
+      "key": "mm.picto_box",
+      "oot": "mm.picto_box",
+      "mm": "Pictograph Box",
+      "label": "Pictograph Box"
+    },
+    {
+      "key": "mm.power_keg",
+      "oot": "mm.power_keg",
+      "mm": "Powder Keg",
+      "label": "Powder Keg"
+    },
+    {
+      "key": "mm.remains.goht",
+      "oot": "mm.remains.goht",
+      "mm": "Goht's Remains",
+      "label": "Goht's Remains"
+    },
+    {
+      "key": "mm.remains.gyorg",
+      "oot": "mm.remains.gyorg",
+      "mm": "Gyorg's Remains",
+      "label": "Gyorg's Remains"
+    },
+    {
+      "key": "mm.remains.odolwa",
+      "oot": "mm.remains.odolwa",
+      "mm": "Odolwa's Remains",
+      "label": "Odolwa's Remains"
+    },
+    {
+      "key": "mm.remains.twinmold",
+      "oot": "mm.remains.twinmold",
+      "mm": "Twinmold's Remains",
+      "label": "Twinmold's Remains"
+    },
+    {
+      "key": "mm.song.elegy",
+      "oot": "mm.song.elegy",
+      "mm": "Elegy of Emptiness",
+      "label": "Elegy of Emptiness"
+    },
+    {
+      "key": "mm.song.goron_lullaby",
+      "oot": "mm.song.goron_lullaby",
+      "mm": "Progressive Goron Lullaby",
+      "label": "Goron Lullaby"
+    },
+    {
+      "key": "mm.song.healing",
+      "oot": "mm.song.healing",
+      "mm": "Song of Healing",
+      "label": "Song of Healing"
+    },
+    {
+      "key": "mm.song.new_wave",
+      "oot": "mm.song.new_wave",
+      "mm": "New Wave Bossa Nova",
+      "label": "New Wave Bossa Nova"
+    },
+    {
+      "key": "mm.song.oath",
+      "oot": "mm.song.oath",
+      "mm": "Oath to Order",
+      "label": "Oath to Order"
+    },
+    {
+      "key": "mm.song.soaring",
+      "oot": "mm.song.soaring",
+      "mm": "Song of Soaring",
+      "label": "Song of Soaring"
+    },
+    {
+      "key": "mm.song.sonata",
+      "oot": "mm.song.sonata",
+      "mm": "Sonata of Awakening",
+      "label": "Sonata of Awakening"
+    },
+    {
+      "key": "nei.ball_and_chain",
+      "oot": "nei.ball_and_chain",
+      "mm": "nei.ball_and_chain",
+      "label": "Ball and Chain"
+    },
+    {
+      "key": "nei.beetle",
+      "oot": "nei.beetle",
+      "mm": "nei.beetle",
+      "label": "Beetle"
+    },
+    {
+      "key": "nei.bomb_arrows",
+      "oot": "nei.bomb_arrows",
+      "mm": "nei.bomb_arrows",
+      "label": "Bomb Arrows"
+    },
+    {
+      "key": "nei.bottle_5",
+      "oot": "nei.bottle_5",
+      "mm": "nei.bottle_5",
+      "label": "Empty Bottle"
+    },
+    {
+      "key": "nei.bottle_6",
+      "oot": "nei.bottle_6",
+      "mm": "nei.bottle_6",
+      "label": "Empty Bottle"
+    },
+    {
+      "key": "nei.bottle_7",
+      "oot": "nei.bottle_7",
+      "mm": "nei.bottle_7",
+      "label": "Empty Bottle"
+    },
+    {
+      "key": "nei.bottle_8",
+      "oot": "nei.bottle_8",
+      "mm": "nei.bottle_8",
+      "label": "Empty Bottle"
+    },
+    {
+      "key": "nei.bottomless_bottle",
+      "oot": "nei.bottomless_bottle",
+      "mm": "nei.bottomless_bottle",
+      "label": "Bottomless Bottle"
+    },
+    {
+      "key": "nei.cane_pacci",
+      "oot": "nei.cane_pacci",
+      "mm": "nei.cane_pacci",
+      "label": "Cane of Pacci"
+    },
+    {
+      "key": "nei.combo.bombers_notebook",
+      "oot": "nei.combo.bombers_notebook",
+      "mm": "Bomber's Notebook",
+      "label": "Bomber's Notebook"
+    },
+    {
+      "key": "nei.deku_form_mask",
+      "oot": "nei.deku_form_mask",
+      "mm": "Deku Mask",
+      "label": "Deku Mask"
+    },
+    {
+      "key": "nei.deku_leaf",
+      "oot": "nei.deku_leaf",
+      "mm": "nei.deku_leaf",
+      "label": "Deku Leaf"
+    },
+    {
+      "key": "nei.demise_destruction",
+      "oot": "nei.demise_destruction",
+      "mm": "nei.demise_destruction",
+      "label": "Demise Destruction"
+    },
+    {
+      "key": "nei.dominion_rod",
+      "oot": "nei.dominion_rod",
+      "mm": "nei.dominion_rod",
+      "label": "Dominion Rod"
+    },
+    {
+      "key": "nei.elemental_wand",
+      "oot": "nei.elemental_wand",
+      "mm": "nei.elemental_wand",
+      "label": "Elemental Wand"
+    },
+    {
+      "key": "nei.equip.byrna",
+      "oot": "nei.equip.byrna",
+      "mm": "nei.equip.byrna",
+      "label": "Cane of Byrna"
+    },
+    {
+      "key": "nei.equip.champion_tunic",
+      "oot": "nei.equip.champion_tunic",
+      "mm": "nei.equip.champion_tunic",
+      "label": "Champion's Tunic"
+    },
+    {
+      "key": "nei.equip.climb_boots",
+      "oot": "nei.equip.climb_boots",
+      "mm": "nei.equip.climb_boots",
+      "label": "Climb Boots"
+    },
+    {
+      "key": "nei.equip.cojiro",
+      "oot": "Cojiro",
+      "mm": "nei.equip.cojiro",
+      "label": "Cojiro"
+    },
+    {
+      "key": "nei.equip.divine_shield",
+      "oot": "nei.equip.divine_shield",
+      "mm": "nei.equip.divine_shield",
+      "label": "Divine Shield"
+    },
+    {
+      "key": "nei.equip.four_sword",
+      "oot": "nei.equip.four_sword",
+      "mm": "nei.equip.four_sword",
+      "label": "Four Sword"
+    },
+    {
+      "key": "nei.equip.kite_shield",
+      "oot": "nei.equip.kite_shield",
+      "mm": "nei.equip.kite_shield",
+      "label": "Kite Shield"
+    },
+    {
+      "key": "nei.equip.magic_cape",
+      "oot": "nei.equip.magic_cape",
+      "mm": "nei.equip.magic_cape",
+      "label": "Magic Cape"
+    },
+    {
+      "key": "nei.equip.magic_tunic",
+      "oot": "nei.equip.magic_tunic",
+      "mm": "nei.equip.magic_tunic",
+      "label": "Magic Tunic"
+    },
+    {
+      "key": "nei.equip.pegasus_boots",
+      "oot": "nei.equip.pegasus_boots",
+      "mm": "nei.equip.pegasus_boots",
+      "label": "Pegasus Boots"
+    },
+    {
+      "key": "nei.equip.pendant",
+      "oot": "nei.equip.pendant",
+      "mm": "Pendant of Memories",
+      "label": "Pendant of Memories"
+    },
+    {
+      "key": "nei.equip.ravio_bracelet",
+      "oot": "nei.equip.ravio_bracelet",
+      "mm": "nei.equip.ravio_bracelet",
+      "label": "Ravio's Bracelet"
+    },
+    {
+      "key": "nei.equip.roc_boots",
+      "oot": "nei.equip.roc_boots",
+      "mm": "nei.equip.roc_boots",
+      "label": "Roc's Boots"
+    },
+    {
+      "key": "nei.equip.sages_tunic",
+      "oot": "nei.equip.sages_tunic",
+      "mm": "nei.equip.sages_tunic",
+      "label": "Sage's Tunic"
+    },
+    {
+      "key": "nei.equip.trident",
+      "oot": "nei.equip.trident",
+      "mm": "nei.equip.trident",
+      "label": "Trident"
+    },
+    {
+      "key": "nei.fierce_deity_mask",
+      "oot": "nei.fierce_deity_mask",
+      "mm": "Fierce Deity Mask",
+      "label": "Fierce Deity's Mask"
+    },
+    {
+      "key": "nei.garo_form_mask",
+      "oot": "nei.garo_form_mask",
+      "mm": "Garo's Mask",
+      "label": "Garo's Mask"
+    },
+    {
+      "key": "nei.gerudo_form_mask",
+      "oot": "nei.gerudo_form_mask",
+      "mm": "nei.gerudo_form_mask",
+      "label": "Gerudo Mask"
+    },
+    {
+      "key": "nei.goron_form_mask",
+      "oot": "nei.goron_form_mask",
+      "mm": "Goron Mask",
+      "label": "Goron Mask"
+    },
+    {
+      "key": "nei.gust_jar",
+      "oot": "nei.gust_jar",
+      "mm": "nei.gust_jar",
+      "label": "Gust Jar"
+    },
+    {
+      "key": "nei.heart.golden",
+      "oot": "nei.heart.golden",
+      "mm": "nei.heart.golden",
+      "label": "Golden Heart Container"
+    },
+    {
+      "key": "nei.heart.golden_piece",
+      "oot": "nei.heart.golden_piece",
+      "mm": "nei.heart.golden_piece",
+      "label": "Golden Heart Piece"
+    },
+    {
+      "key": "nei.infinite.bomb_bag",
+      "oot": "Infinite Bomb Bag",
+      "mm": "nei.infinite.bomb_bag",
+      "label": "Infinite Bomb Bag"
+    },
+    {
+      "key": "nei.infinite.bombchus",
+      "oot": "Infinite Bombchus",
+      "mm": "nei.infinite.bombchus",
+      "label": "Infinite Bombchus"
+    },
+    {
+      "key": "nei.infinite.deku_nuts",
+      "oot": "Infinite Nut Capacity",
+      "mm": "nei.infinite.deku_nuts",
+      "label": "Infinite Nut Capacity"
+    },
+    {
+      "key": "nei.infinite.deku_sticks",
+      "oot": "Infinite Stick Capacity",
+      "mm": "nei.infinite.deku_sticks",
+      "label": "Infinite Stick Capacity"
+    },
+    {
+      "key": "nei.infinite.magic",
+      "oot": "Infinite Magic Meter",
+      "mm": "nei.infinite.magic",
+      "label": "Infinite Magic Meter"
+    },
+    {
+      "key": "nei.infinite.quiver",
+      "oot": "Infinite Quiver",
+      "mm": "nei.infinite.quiver",
+      "label": "Infinite Quiver"
+    },
+    {
+      "key": "nei.infinite.wallet",
+      "oot": "Infinite Wallet",
+      "mm": "nei.infinite.wallet",
+      "label": "Infinite Wallet"
+    },
+    {
+      "key": "nei.keaton_form_mask",
+      "oot": "nei.keaton_form_mask",
+      "mm": "Keaton Mask",
+      "label": "Keaton Mask"
+    },
+    {
+      "key": "nei.lantern",
+      "oot": "nei.lantern",
+      "mm": "nei.lantern",
+      "label": "Lantern"
+    },
+    {
+      "key": "nei.mask_bunny",
+      "oot": "nei.mask_bunny",
+      "mm": "Bunny Hood",
+      "label": "Bunny Hood"
+    },
+    {
+      "key": "nei.mask_kafei",
+      "oot": "nei.mask_kafei",
+      "mm": "Kafei's Mask",
+      "label": "Kafei's Mask"
+    },
+    {
+      "key": "nei.mask_truth",
+      "oot": "nei.mask_truth",
+      "mm": "Mask of Truth",
+      "label": "Mask of Truth"
+    },
+    {
+      "key": "nei.medallion.fire",
+      "oot": "Fire Medallion",
+      "mm": "nei.medallion.fire",
+      "label": "Fire Medallion"
+    },
+    {
+      "key": "nei.medallion.forest",
+      "oot": "Forest Medallion",
+      "mm": "nei.medallion.forest",
+      "label": "Forest Medallion"
+    },
+    {
+      "key": "nei.medallion.light",
+      "oot": "Light Medallion",
+      "mm": "nei.medallion.light",
+      "label": "Light Medallion"
+    },
+    {
+      "key": "nei.medallion.shadow",
+      "oot": "Shadow Medallion",
+      "mm": "nei.medallion.shadow",
+      "label": "Shadow Medallion"
+    },
+    {
+      "key": "nei.medallion.spirit",
+      "oot": "Spirit Medallion",
+      "mm": "nei.medallion.spirit",
+      "label": "Spirit Medallion"
+    },
+    {
+      "key": "nei.medallion.water",
+      "oot": "Water Medallion",
+      "mm": "nei.medallion.water",
+      "label": "Water Medallion"
+    },
+    {
+      "key": "nei.minish_cap",
+      "oot": "nei.minish_cap",
+      "mm": "nei.minish_cap",
+      "label": "The Minish Cap"
+    },
+    {
+      "key": "nei.mm_song_ballad_of_hero",
+      "oot": "nei.mm_song_ballad_of_hero",
+      "mm": "nei.mm_song_ballad_of_hero",
+      "label": "Ballad of Hero"
+    },
+    {
+      "key": "nei.mm_song_command_melody",
+      "oot": "nei.mm_song_command_melody",
+      "mm": "nei.mm_song_command_melody",
+      "label": "Command Melody"
+    },
+    {
+      "key": "nei.mm_song_fugue_of_home",
+      "oot": "nei.mm_song_fugue_of_home",
+      "mm": "nei.mm_song_fugue_of_home",
+      "label": "Fugue of Home"
+    },
+    {
+      "key": "nei.mogma_mitts",
+      "oot": "nei.mogma_mitts",
+      "mm": "nei.mogma_mitts",
+      "label": "Mogma Mitts"
+    },
+    {
+      "key": "nei.net",
+      "oot": "nei.net",
+      "mm": "nei.net",
+      "label": "Net"
+    },
+    {
+      "key": "nei.phantom_hourglass",
+      "oot": "nei.phantom_hourglass",
+      "mm": "nei.phantom_hourglass",
+      "label": "Phantom Hourglass"
+    },
+    {
+      "key": "nei.progressive.bgs",
+      "oot": "nei.progressive.bgs",
+      "mm": "nei.progressive.bgs",
+      "label": "Giant's Knife"
+    },
+    {
+      "key": "nei.progressive.hammer",
+      "oot": "nei.progressive.hammer",
+      "mm": "nei.progressive.hammer",
+      "label": "Megaton Hammer"
+    },
+    {
+      "key": "nei.progressive.hookshot",
+      "oot": "nei.progressive.hookshot",
+      "mm": "nei.progressive.hookshot",
+      "label": "Hookshot"
+    },
+    {
+      "key": "nei.progressive.kokiri_sword",
+      "oot": "nei.progressive.kokiri_sword",
+      "mm": "nei.progressive.kokiri_sword",
+      "label": "Kokiri Sword"
+    },
+    {
+      "key": "nei.progressive.master_sword",
+      "oot": "nei.progressive.master_sword",
+      "mm": "nei.progressive.master_sword",
+      "label": "Master Sword"
+    },
+    {
+      "key": "nei.progressive_rocs",
+      "oot": "nei.progressive_rocs",
+      "mm": "nei.progressive_rocs",
+      "label": "Progressive Roc's Feather"
+    },
+    {
+      "key": "nei.rito_form_mask",
+      "oot": "nei.rito_form_mask",
+      "mm": "nei.rito_form_mask",
+      "label": "Rito Mask"
+    },
+    {
+      "key": "nei.rod_fire",
+      "oot": "nei.rod_fire",
+      "mm": "nei.rod_fire",
+      "label": "Fire Rod"
+    },
+    {
+      "key": "nei.rod_ice",
+      "oot": "nei.rod_ice",
+      "mm": "nei.rod_ice",
+      "label": "Ice Rod"
+    },
+    {
+      "key": "nei.rod_light",
+      "oot": "nei.rod_light",
+      "mm": "nei.rod_light",
+      "label": "Light Rod"
+    },
+    {
+      "key": "nei.rod_of_seasons",
+      "oot": "nei.rod_of_seasons",
+      "mm": "nei.rod_of_seasons",
+      "label": "Rod of Seasons"
+    },
+    {
+      "key": "nei.seasons.autumn",
+      "oot": "nei.seasons.autumn",
+      "mm": "nei.seasons.autumn",
+      "label": "Autumn"
+    },
+    {
+      "key": "nei.seasons.spring",
+      "oot": "nei.seasons.spring",
+      "mm": "nei.seasons.spring",
+      "label": "Spring"
+    },
+    {
+      "key": "nei.seasons.summer",
+      "oot": "nei.seasons.summer",
+      "mm": "nei.seasons.summer",
+      "label": "Summer"
+    },
+    {
+      "key": "nei.seasons.winter",
+      "oot": "nei.seasons.winter",
+      "mm": "nei.seasons.winter",
+      "label": "Winter"
+    },
+    {
+      "key": "nei.shadow_crystal",
+      "oot": "nei.shadow_crystal",
+      "mm": "nei.shadow_crystal",
+      "label": "Shadow Crystal"
+    },
+    {
+      "key": "nei.sheikah_slate",
+      "oot": "nei.sheikah_slate",
+      "mm": "nei.sheikah_slate",
+      "label": "Sheikah Slate"
+    },
+    {
+      "key": "nei.shovel",
+      "oot": "nei.shovel",
+      "mm": "nei.shovel",
+      "label": "Dampe's Shovel"
+    },
+    {
+      "key": "nei.slate.bomb",
+      "oot": "nei.slate.bomb",
+      "mm": "nei.slate.bomb",
+      "label": "Remote Bomb"
+    },
+    {
+      "key": "nei.slate.cryonis",
+      "oot": "nei.slate.cryonis",
+      "mm": "nei.slate.cryonis",
+      "label": "Cryonis"
+    },
+    {
+      "key": "nei.slate.master_cycle",
+      "oot": "nei.slate.master_cycle",
+      "mm": "nei.slate.master_cycle",
+      "label": "Master Cycle Zero"
+    },
+    {
+      "key": "nei.slate.stasis",
+      "oot": "nei.slate.stasis",
+      "mm": "nei.slate.stasis",
+      "label": "Stasis"
+    },
+    {
+      "key": "nei.somaria",
+      "oot": "nei.somaria",
+      "mm": "nei.somaria",
+      "label": "Cane of Somaria"
+    },
+    {
+      "key": "nei.somaria.summon.bird",
+      "oot": "nei.somaria.summon.bird",
+      "mm": "nei.somaria.summon.bird",
+      "label": "Somaria's Bird"
+    },
+    {
+      "key": "nei.somaria.summon.block",
+      "oot": "nei.somaria.summon.block",
+      "mm": "nei.somaria.summon.block",
+      "label": "Somaria's Block"
+    },
+    {
+      "key": "nei.somaria.summon.crate",
+      "oot": "nei.somaria.summon.crate",
+      "mm": "nei.somaria.summon.crate",
+      "label": "Somaria's Crate"
+    },
+    {
+      "key": "nei.somaria.summon.platform",
+      "oot": "nei.somaria.summon.platform",
+      "mm": "nei.somaria.summon.platform",
+      "label": "Somaria's Platform"
+    },
+    {
+      "key": "nei.somaria.summon.statue",
+      "oot": "nei.somaria.summon.statue",
+      "mm": "nei.somaria.summon.statue",
+      "label": "Somaria's Statue"
+    },
+    {
+      "key": "nei.spinner",
+      "oot": "nei.spinner",
+      "mm": "nei.spinner",
+      "label": "Spinner"
+    },
+    {
+      "key": "nei.spiritual_stone.goron",
+      "oot": "Goron's Ruby",
+      "mm": "nei.spiritual_stone.goron",
+      "label": "Goron's Ruby"
+    },
+    {
+      "key": "nei.spiritual_stone.kokiri",
+      "oot": "Kokiri's Emerald",
+      "mm": "nei.spiritual_stone.kokiri",
+      "label": "Kokiri's Emerald"
+    },
+    {
+      "key": "nei.spiritual_stone.zora",
+      "oot": "Zora's Sapphire",
+      "mm": "nei.spiritual_stone.zora",
+      "label": "Zora's Sapphire"
+    },
+    {
+      "key": "nei.switch_hook",
+      "oot": "nei.switch_hook",
+      "mm": "nei.switch_hook",
+      "label": "Switch Hook"
+    },
+    {
+      "key": "nei.time_gate",
+      "oot": "nei.time_gate",
+      "mm": "nei.time_gate",
+      "label": "Time Gate"
+    },
+    {
+      "key": "nei.ultrahand",
+      "oot": "nei.ultrahand",
+      "mm": "nei.ultrahand",
+      "label": "Ultrahand"
+    },
+    {
+      "key": "nei.wand.meteor",
+      "oot": "nei.wand.meteor",
+      "mm": "nei.wand.meteor",
+      "label": "Meteor Rod"
+    },
+    {
+      "key": "nei.wand.sand",
+      "oot": "nei.wand.sand",
+      "mm": "nei.wand.sand",
+      "label": "Sand Rod"
+    },
+    {
+      "key": "nei.wand.shadow",
+      "oot": "nei.wand.shadow",
+      "mm": "nei.wand.shadow",
+      "label": "Shadow Scepter"
+    },
+    {
+      "key": "nei.wand.storm",
+      "oot": "nei.wand.storm",
+      "mm": "nei.wand.storm",
+      "label": "Storm Rod"
+    },
+    {
+      "key": "nei.wand.tornado",
+      "oot": "nei.wand.tornado",
+      "mm": "nei.wand.tornado",
+      "label": "Tornado Rod"
+    },
+    {
+      "key": "nei.wand.water",
+      "oot": "nei.wand.water",
+      "mm": "nei.wand.water",
+      "label": "Water Rod"
+    },
+    {
+      "key": "nei.whip",
+      "oot": "nei.whip",
+      "mm": "nei.whip",
+      "label": "Whip"
+    },
+    {
+      "key": "nei.zonai_permafrost",
+      "oot": "nei.zonai_permafrost",
+      "mm": "nei.zonai_permafrost",
+      "label": "Zonai Permafrost"
+    },
+    {
+      "key": "nei.zora_form_mask",
+      "oot": "nei.zora_form_mask",
+      "mm": "Zora Mask",
+      "label": "Zora Mask"
+    },
+    {
+      "key": "oot.boomerang",
+      "oot": "Boomerang",
+      "mm": "oot.boomerang",
+      "label": "Boomerang"
+    },
+    {
+      "key": "oot.dins_fire",
+      "oot": "Din's Fire",
+      "mm": "oot.dins_fire",
+      "label": "Din's Fire"
+    },
+    {
+      "key": "oot.equip.biggoron_sword",
+      "oot": "Biggoron's Sword",
+      "mm": "oot.equip.biggoron_sword",
+      "label": "Biggoron's Sword"
+    },
+    {
+      "key": "oot.equip.deku_shield",
+      "oot": "Deku Shield",
+      "mm": "oot.equip.deku_shield",
+      "label": "Deku Shield"
+    },
+    {
+      "key": "oot.equip.goron_tunic",
+      "oot": "Goron Tunic",
+      "mm": "oot.equip.goron_tunic",
+      "label": "Goron Tunic"
+    },
+    {
+      "key": "oot.equip.hover_boots",
+      "oot": "Hover Boots",
+      "mm": "oot.equip.hover_boots",
+      "label": "Hover Boots"
+    },
+    {
+      "key": "oot.equip.iron_boots",
+      "oot": "Iron Boots",
+      "mm": "oot.equip.iron_boots",
+      "label": "Iron Boots"
+    },
+    {
+      "key": "oot.equip.master_sword",
+      "oot": "Master Sword",
+      "mm": "oot.equip.master_sword",
+      "label": "Master Sword"
+    },
+    {
+      "key": "oot.equip.mirror_shield",
+      "oot": "Mirror Shield",
+      "mm": "oot.equip.mirror_shield",
+      "label": "Mirror Shield"
+    },
+    {
+      "key": "oot.equip.zora_tunic",
+      "oot": "Zora Tunic",
+      "mm": "oot.equip.zora_tunic",
+      "label": "Zora Tunic"
+    },
+    {
+      "key": "oot.farores_wind",
+      "oot": "Farore's Wind",
+      "mm": "oot.farores_wind",
+      "label": "Farore's Wind"
+    },
+    {
+      "key": "oot.hammer",
+      "oot": "Megaton Hammer",
+      "mm": "oot.hammer",
+      "label": "Megaton Hammer"
+    },
+    {
+      "key": "oot.nayrus_love",
+      "oot": "Nayru's Love",
+      "mm": "oot.nayrus_love",
+      "label": "Nayru's Love"
+    },
+    {
+      "key": "oot.slingshot.progressive",
+      "oot": "Progressive Slingshot",
+      "mm": "oot.slingshot.progressive",
+      "label": "Progressive Slingshot"
+    },
+    {
+      "key": "oot.song.bolero",
+      "oot": "Bolero of Fire",
+      "mm": "oot.song.bolero",
+      "label": "Bolero of Fire"
+    },
+    {
+      "key": "oot.song.lullaby",
+      "oot": "Zelda's Lullaby",
+      "mm": "oot.song.lullaby",
+      "label": "Zelda's Lullaby"
+    },
+    {
+      "key": "oot.song.minuet",
+      "oot": "Minuet of Forest",
+      "mm": "oot.song.minuet",
+      "label": "Minuet of Forest"
+    },
+    {
+      "key": "oot.song.nocturne",
+      "oot": "Nocturne of Shadow",
+      "mm": "oot.song.nocturne",
+      "label": "Nocturne of Shadow"
+    },
+    {
+      "key": "oot.song.prelude",
+      "oot": "Prelude of Light",
+      "mm": "oot.song.prelude",
+      "label": "Prelude of Light"
+    },
+    {
+      "key": "oot.song.requiem",
+      "oot": "Requiem of Spirit",
+      "mm": "oot.song.requiem",
+      "label": "Requiem of Spirit"
+    },
+    {
+      "key": "oot.song.serenade",
+      "oot": "Serenade of Water",
+      "mm": "oot.song.serenade",
+      "label": "Serenade of Water"
+    }
+  ]
+}

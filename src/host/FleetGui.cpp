@@ -800,6 +800,9 @@ class FleetGui::Menu : public Ship::GuiWindow {
         if (layout == RandomizerPages().end()) {
             return;
         }
+        if (generator) {
+            generator->WarmPoolWorker();
+        }
         const float before = ImGui::GetCursorPosY();
         if (layout->fleetRows != nullptr) {
             DrawFleetRows(layout->fleetRows);

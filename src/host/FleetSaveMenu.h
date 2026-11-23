@@ -2,6 +2,7 @@
 
 #include "PoolWorker.h"
 #include "SeedJob.h"
+#include "rando/ShareChoices.h"
 #include "rando/SharedItems.h"
 #include <fleet/FleetGameApi.h>
 #include <fleet/rando/CrossPassages.h>
@@ -42,6 +43,7 @@ class FleetSaveMenu : public Ship::GuiWindow {
     bool IsConfiguring() const {
         return mActive;
     }
+    void WarmPoolWorker();
     const std::filesystem::path& Root() const {
         return mRoot;
     }
@@ -125,6 +127,7 @@ class FleetSaveMenu : public Ship::GuiWindow {
     bool IsComputing(const WorkerFeed& feed) const;
     void DrawWorkerStatus(const WorkerFeed& feed, const char* idle);
     void PollWorker();
+    void WarmWorker();
     void StopWorker();
     void ReceivePool(const nlohmann::json& reply);
     void SortPool();
@@ -143,12 +146,13 @@ class FleetSaveMenu : public Ship::GuiWindow {
     void RebuildShareRows(const nlohmann::json& modPairs);
     ShareRow* FindHostRow(const ComboRando::FoldedPair& folded);
     void NameFoldedPairs(const nlohmann::json& modPairs);
-    std::set<std::string> CollectUnsharedPairs();
     void TellTwinRowsApart();
     bool MatchesShareFilter(const ShareRow& row, const std::string& filter) const;
     bool IsShared(const ShareRow& row) const;
     void SetShared(const ShareRow& row, bool shared);
     void SetAllShared(bool shared);
+    std::vector<std::string> PairRowKeys() const;
+    void GenerateOncePoolArrives();
     void LoadShareChoices();
     void KeepShareChoices();
     void DrawShareBar(const ImVec4& theme);
@@ -304,10 +308,9 @@ class FleetSaveMenu : public Ship::GuiWindow {
     nlohmann::json mResult;
     std::string mError;
     std::array<char, 16> mSeed = {};
-    std::array<bool, ComboRando::SF_COUNT> mShared;
-    std::set<std::string> mUnsharedPairs;
+    ComboRando::ShareChoices mShareChoices;
     std::vector<ShareRow> mShareRows;
-    bool mModPairsKnown = false;
+    bool mGenerateWhenPoolArrives = false;
     std::array<char, 64> mShareFilter = {};
     std::array<bool, 8> mPools;
     std::array<bool, std::size(ComboRando::CrossDungeon::kPassages)> mPassages = {};

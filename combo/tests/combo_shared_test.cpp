@@ -3,6 +3,7 @@
 #ifndef COMBO_SHARED_BASELINE
 #include "rando/CrossHints.h"
 #endif
+#include "rando/ShareChoices.h"
 #include "rando/SharedItems.h"
 #include <cstdlib>
 #include <functional>
@@ -655,7 +656,60 @@ static void ownGameAndSongs() {
 }
 #endif
 
+static bool holds(const std::set<std::string>& keys, const std::string& key) {
+    return keys.contains(key);
+}
+
+// The Shared Items list must reach the generator exactly as shown, whatever order the pool and the clicks come in.
+static void shareChoices() {
+    const std::vector<std::string> rows = { "mm.remains.goht", "oot.hammer", "nei.bomb_arrows" };
+    ShareChoices fresh;
+    check(SharedMaskFromKeys(json(fresh.SharedOptionKeys())) == SharedMaskAll(), "every option starts shared");
+    check(fresh.UnsharedPairs().empty(), "nothing starts unshared");
+
+    ShareChoices early;
+    early.SetAllShared(false);
+    check(early.IsBulkChoicePending() && early.SharedOptionKeys().empty(), "Unshare All waits for the mod pairs");
+    early.SetFamilyShared(SF_SWORD, true);
+    early.LearnPairRows(rows);
+    const auto unshared = early.UnsharedPairs();
+    check(!early.IsBulkChoicePending(), "the pool settles a pending bulk choice");
+    check(holds(unshared, "mm.remains.goht") && holds(unshared, "nei.bomb_arrows"),
+          "Unshare All before the pool unshares the mod pairs it names");
+    check(holds(unshared, "nei.progressive.hammer") && holds(unshared, "nei.goron_form_mask"),
+          "folded pairs follow their unshared hosts");
+    check(!holds(unshared, "nei.progressive.kokiri_sword"), "a family shared again keeps its folded pair shared");
+    check(std::all_of(std::begin(kBottlePairKeys), std::end(kBottlePairKeys),
+                      [&](const char* key) { return holds(unshared, key); }),
+          "unshared bottles unshare every bottle pair");
+    check(SharedMaskFromKeys(json(early.SharedOptionKeys())) == (uint64_t{ 1 } << SF_SWORD),
+          "a family shared after Unshare All is the only shared option");
+
+    ShareChoices mixed;
+    mixed.LearnPairRows(rows);
+    mixed.SetPairShared("mm.remains.goht", false);
+    mixed.SetFamilyShared(SF_GORON_MASK, false);
+    check(mixed.UnsharedPairs() == std::set<std::string>{ "mm.remains.goht", "nei.goron_form_mask" },
+          "a mixed choice unshares exactly the pairs picked");
+    check(!IsSharePairRow("nei.infinite.bomb_bag", json::array()), "an infinite upgrade has no row of its own");
+    mixed.SetFamilyShared(SF_BOMB_BAG, false);
+    check(holds(mixed.UnsharedPairs(), "nei.infinite.bomb_bag"), "an infinite upgrade follows its tier family");
+    mixed.SetFamilyShared(SF_GOLDEN_HEARTS, false);
+    check(holds(mixed.UnsharedPairs(), "nei.heart.golden_piece"),
+          "a pair hosted by a later family of an option follows the option's row");
+    mixed.SetAllShared(true);
+    check(mixed.UnsharedPairs().empty() && !mixed.IsBulkChoicePending(), "Share All after the pool shares everything");
+
+    ShareChoices stored;
+    stored.SetAllShared(false);
+    ShareChoices reloaded;
+    reloaded.ReadJson(stored.ToJson());
+    reloaded.LearnPairRows(rows);
+    check(holds(reloaded.UnsharedPairs(), "oot.hammer"), "a pending Unshare All survives a restart");
+}
+
 int main() {
+    shareChoices();
     bottleCap();
     dynamicModPairs();
     nativePairKeys();

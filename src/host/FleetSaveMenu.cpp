@@ -663,19 +663,6 @@ std::string Lowercase(std::string text) {
 
 constexpr int kModPairRow = ComboRando::kNoSharedFamily;
 
-bool HasModPair(const nlohmann::json& modPairs, const std::string& key) {
-    return std::any_of(modPairs.begin(), modPairs.end(),
-                       [&](const nlohmann::json& pair) { return pair.value("key", std::string{}) == key; });
-}
-
-bool IsFoldedIntoAnotherRow(const std::string& key, const nlohmann::json& modPairs) {
-    const ComboRando::FoldedPair* folded = ComboRando::FindFoldedPair(key);
-    if (folded == nullptr) {
-        return false;
-    }
-    return folded->hostFamily != ComboRando::kNoSharedFamily || HasModPair(modPairs, folded->hostPair);
-}
-
 std::string ShareLabel(const ComboRando::SharedFamilyDef& family) {
     constexpr std::string_view kHeading = "Shared ";
     const std::string_view label = family.label;
@@ -854,7 +841,6 @@ FleetSaveMenu::FleetSaveMenu(std::filesystem::path directory, std::string oot, s
     : GuiWindow("", true, "FleetFiles"), mDirectory(std::move(directory)),
       mRoot(saves.empty() ? mDirectory / "saves" / "fleet" : std::filesystem::absolute(saves)), mOot(std::move(oot)),
       mMm(std::move(mm)) {
-    mShared.fill(true);
     mPools.fill(true);
     mPools[kPoolDecoupled] = false;
     const auto seed = std::to_string(std::random_device{}());
@@ -1125,6 +1111,10 @@ void FleetSaveMenu::Select(int slot) {
 }
 
 void FleetSaveMenu::Generate() {
+    if (mShareChoices.IsBulkChoicePending()) {
+        mGenerateWhenPoolArrives = true;
+        return;
+    }
     mReady.reset();
     mStartRequested = false;
     if (mSeed[0] == '\0') {
@@ -1332,16 +1322,14 @@ std::vector<std::string> FleetSaveMenu::FleetArguments(const std::string& seed) 
     std::vector<std::string> args = { "--seed", seed, "--start", starts[mStart] };
     args.insert(args.end(), { "--plentiful-mod-items", mPlentifulModItems ? "true" : "false" });
     std::string shared;
-    for (int family = 0; family < ComboRando::SF_COUNT; family++) {
-        if (mShared[family] && ComboRando::IsFirstOfSharedOption(family)) {
-            shared += (shared.empty() ? "" : ",") + std::string(ComboRando::SharedFamilyByIndex(family).key);
-        }
+    for (const std::string& key : mShareChoices.SharedOptionKeys()) {
+        shared += (shared.empty() ? "" : ",") + key;
     }
     if (!shared.empty()) {
         args.insert(args.end(), { "--shared", shared });
     }
     std::string unshared;
-    for (const auto& key : CollectUnsharedPairs()) {
+    for (const auto& key : mShareChoices.UnsharedPairs()) {
         unshared += (unshared.empty() ? "" : ",") + key;
     }
     if (!unshared.empty()) {
@@ -1423,10 +1411,7 @@ void FleetSaveMenu::FeedWorker(WorkerFeed& feed) {
     if (!settled || !mWorkerOp.empty() || (mPoolWorker && mPoolWorker->IsBusy())) {
         return;
     }
-    if (!mPoolWorker) {
-        std::filesystem::create_directories(mRoot / "worker");
-        mPoolWorker = std::make_unique<PoolWorker>(mDirectory / kFleetExecutable, BaseArguments(), mRoot / "worker");
-    }
+    WarmWorker();
     const auto run = mRoot / feed.op;
     std::filesystem::create_directories(run);
     Write(run / "settings.json", settings);
@@ -1476,6 +1461,22 @@ void FleetSaveMenu::PollWorker() {
     } else {
         ReceivePool(*reply);
     }
+}
+
+// Booting both games with every mod takes seconds, so it starts on any randomizer page, not on the pool page.
+void FleetSaveMenu::WarmPoolWorker() {
+    if (!mActive || mReady) {
+        return;
+    }
+    WarmWorker();
+}
+
+void FleetSaveMenu::WarmWorker() {
+    if (mPoolWorker) {
+        return;
+    }
+    std::filesystem::create_directories(mRoot / "worker");
+    mPoolWorker = std::make_unique<PoolWorker>(mDirectory / kFleetExecutable, BaseArguments(), mRoot / "worker");
 }
 
 void FleetSaveMenu::StopWorker() {
@@ -1557,7 +1558,8 @@ void FleetSaveMenu::ReceivePool(const nlohmann::json& reply) {
     joinedIntoChains.insert(joinedIntoChains.end(), joinedIntoVariants.begin(), joinedIntoVariants.end());
     if (reply.contains("pairs")) {
         RebuildShareRows(reply.at("pairs"));
-        mModPairsKnown = true;
+        mShareChoices.LearnPairRows(PairRowKeys());
+        KeepShareChoices();
     }
     mStartingAtPool = mStartingRequested;
     mFleetStartingAtPool = mFleetStartingRequested;
@@ -1759,6 +1761,7 @@ void FleetSaveMenu::Poll() {
             mNativeRequested = false;
             Generate();
         }
+        GenerateOncePoolArrives();
         if (mAutomation >= 0 && mPrepared && !mReady && mSlot < 0) {
             SelectNative(mAutomation);
         }
@@ -1827,6 +1830,7 @@ bool FleetSaveMenu::CloseConfiguration() {
         }
         mJob.Cancel();
         mLoadingCatalogue = false;
+        mGenerateWhenPoolArrives = false;
         mActive = false;
         mSlot = -1;
     }
@@ -1845,7 +1849,7 @@ void FleetSaveMenu::DrawGeneralPage() {
     if (!mError.empty()) {
         ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "Error: %s", mError.c_str());
     }
-    if (mGenerating || mLoadingCatalogue) {
+    if (mGenerating || mLoadingCatalogue || mGenerateWhenPoolArrives) {
         DrawGenerationProgress();
         return;
     }
@@ -1934,6 +1938,9 @@ void FleetSaveMenu::DrawKeyRingCount() {
 
 void FleetSaveMenu::DrawGenerationProgress() {
     std::string phase = mLoadingCatalogue ? "Loading randomizer options..." : "Generating...";
+    if (mGenerateWhenPoolArrives) {
+        phase = "Computing the item pool so Share/Unshare All covers the mod items...";
+    }
     if (mGenerating) {
         const auto status = nlohmann::json::parse(std::ifstream(mRun / "progress.json"), nullptr, false);
         if (status.is_object()) {
@@ -2866,10 +2873,7 @@ void FleetSaveMenu::RebuildShareRows(const nlohmann::json& modPairs) {
     }
     for (const auto& pair : modPairs) {
         const std::string key = pair.value("key", std::string{});
-        const bool isBottlePair =
-            std::find(std::begin(ComboRando::kBottlePairKeys), std::end(ComboRando::kBottlePairKeys), key) !=
-            std::end(ComboRando::kBottlePairKeys);
-        if (IsFoldedIntoAnotherRow(key, modPairs) || isBottlePair) {
+        if (!ComboRando::IsSharePairRow(key, modPairs)) {
             continue;
         }
         const std::string ootName = pair.value("oot", std::string{});
@@ -2903,32 +2907,6 @@ void FleetSaveMenu::NameFoldedPairs(const nlohmann::json& modPairs) {
     }
 }
 
-std::set<std::string> FleetSaveMenu::CollectUnsharedPairs() {
-    std::set<std::string> unshared = mUnsharedPairs;
-    for (const ComboRando::FoldedPair& folded : ComboRando::kFoldedPairs) {
-        const ShareRow* host = FindHostRow(folded);
-        if (host == nullptr) {
-            continue;
-        }
-        if (IsShared(*host)) {
-            unshared.erase(folded.key);
-        } else {
-            unshared.insert(folded.key);
-        }
-    }
-    const auto bottles = std::find_if(mShareRows.begin(), mShareRows.end(),
-                                      [](const ShareRow& row) { return row.family == ComboRando::SF_BOTTLES; });
-    const bool sharesBottles = bottles != mShareRows.end() && IsShared(*bottles);
-    for (const char* key : ComboRando::kBottlePairKeys) {
-        if (sharesBottles) {
-            unshared.erase(key);
-        } else {
-            unshared.insert(key);
-        }
-    }
-    return unshared;
-}
-
 void FleetSaveMenu::TellTwinRowsApart() {
     std::map<std::string, int> rowsPerLabel;
     for (const auto& row : mShareRows) {
@@ -2947,54 +2925,58 @@ bool FleetSaveMenu::MatchesShareFilter(const ShareRow& row, const std::string& f
 }
 
 bool FleetSaveMenu::IsShared(const ShareRow& row) const {
-    return row.family == kModPairRow ? !mUnsharedPairs.contains(row.pairKey) : mShared[row.family];
+    return row.family == kModPairRow ? mShareChoices.IsPairShared(row.pairKey)
+                                     : mShareChoices.IsFamilyShared(row.family);
 }
 
 void FleetSaveMenu::SetShared(const ShareRow& row, bool shared) {
-    if (row.family != kModPairRow) {
-        mShared[row.family] = shared;
-        return;
-    }
-    if (shared) {
-        mUnsharedPairs.erase(row.pairKey);
+    if (row.family == kModPairRow) {
+        mShareChoices.SetPairShared(row.pairKey, shared);
     } else {
-        mUnsharedPairs.insert(row.pairKey);
+        mShareChoices.SetFamilyShared(row.family, shared);
     }
 }
 
 void FleetSaveMenu::SetAllShared(bool shared) {
-    mUnsharedPairs.clear();
-    for (const auto& row : mShareRows) {
-        SetShared(row, shared);
-    }
+    mShareChoices.SetAllShared(shared);
     KeepShareChoices();
 }
 
-void FleetSaveMenu::LoadShareChoices() {
-    const auto stored = nlohmann::json::parse(std::ifstream(mRoot / "shared.json"), nullptr, false);
-    if (!stored.is_object()) {
-        return;
-    }
-    const uint64_t unsharedFamilies =
-        ComboRando::SharedMaskFromKeys(stored.value("unsharedFamilies", nlohmann::json::array()));
-    for (int family = 0; family < ComboRando::SF_COUNT; family++) {
-        mShared[family] = (unsharedFamilies & (uint64_t{ 1 } << family)) == 0;
-    }
-    for (const auto& key : stored.value("unsharedPairs", nlohmann::json::array())) {
-        if (key.is_string()) {
-            mUnsharedPairs.insert(key.get<std::string>());
+std::vector<std::string> FleetSaveMenu::PairRowKeys() const {
+    std::vector<std::string> keys;
+    for (const auto& row : mShareRows) {
+        if (row.family == kModPairRow) {
+            keys.push_back(row.pairKey);
         }
     }
+    return keys;
+}
+
+// A generation with a bulk choice still pending would share the mod pairs the player unshared.
+void FleetSaveMenu::GenerateOncePoolArrives() {
+    if (!mGenerateWhenPoolArrives) {
+        return;
+    }
+    if (!mPoolFeed.error.empty()) {
+        mGenerateWhenPoolArrives = false;
+        throw std::runtime_error("The item pool could not be computed, so the share choice cannot reach the mod "
+                                 "items: " +
+                                 mPoolFeed.error);
+    }
+    if (mShareChoices.IsBulkChoicePending()) {
+        PrepareWorkerPage(mPoolFeed);
+        return;
+    }
+    mGenerateWhenPoolArrives = false;
+    Generate();
+}
+
+void FleetSaveMenu::LoadShareChoices() {
+    mShareChoices.ReadJson(nlohmann::json::parse(std::ifstream(mRoot / "shared.json"), nullptr, false));
 }
 
 void FleetSaveMenu::KeepShareChoices() {
-    nlohmann::json unsharedFamilies = nlohmann::json::array();
-    for (int family = 0; family < ComboRando::SF_COUNT; family++) {
-        if (!mShared[family] && ComboRando::IsFirstOfSharedOption(family)) {
-            unsharedFamilies.push_back(ComboRando::SharedFamilyByIndex(family).key);
-        }
-    }
-    KeepFile("shared.json", { { "unsharedFamilies", unsharedFamilies }, { "unsharedPairs", mUnsharedPairs } });
+    KeepFile("shared.json", mShareChoices.ToJson());
 }
 
 void FleetSaveMenu::DrawShareRow(const ShareRow& row) {
@@ -3075,7 +3057,7 @@ void FleetSaveMenu::DrawShareBar(const ImVec4& theme) {
     ComboRando::ComboMenu_PopCheckbox();
     ImGui::SetItemTooltip("Mod items get an extra copy in the pool.");
     DrawShareList(theme);
-    ImGui::TextDisabled(mModPairsKnown ? "A shared item counts for both games. Applied at generation."
+    ImGui::TextDisabled(mShareChoices.ArePairsKnown() ? "A shared item counts for both games. Applied at generation."
                                        : "Mod items join this list once the item pool is computed.");
 }
 

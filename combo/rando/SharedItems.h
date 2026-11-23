@@ -379,6 +379,17 @@ inline constexpr FoldedPair kFoldedPairs[] = {
     { "nei.progressive.hammer", kNoSharedFamily, "oot.hammer" },
     { "nei.progressive.master_sword", kNoSharedFamily, "oot.equip.master_sword" },
     { "nei.progressive.bgs", kNoSharedFamily, "oot.equip.biggoron_sword" },
+    // MM's tier ladders end in these, so a shared family already carries them.
+    { "nei.infinite.wallet", SF_WALLET, "" },
+    { "nei.infinite.quiver", SF_BOW, "" },
+    { "nei.infinite.bomb_bag", SF_BOMB_BAG, "" },
+    { "nei.infinite.magic", SF_MAGIC, "" },
+    { "nei.infinite.bombchus", SF_BOMBCHU_BAG, "" },
+    { "nei.infinite.deku_sticks", SF_DEKU_STICK_BAG, "" },
+    { "nei.infinite.deku_nuts", SF_DEKU_NUT_BAG, "" },
+    // Golden Hearts is a share option of its own over these same mod items.
+    { "nei.heart.golden", SF_GOLDEN_HEARTS, "" },
+    { "nei.heart.golden_piece", SF_GOLDEN_HEART_PIECES, "" },
 };
 
 inline const FoldedPair* FindFoldedPair(const std::string& key) {

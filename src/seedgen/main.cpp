@@ -28,6 +28,8 @@
 #include "rando/CrossHints.h"
 #include "rando/CrossWorldRando.h"
 #include "rando/MmEntryGate.h"
+#include "rando/SeedShareCheck.h"
+#include "rando/ShareChoices.h"
 
 #ifdef _WIN32
 #include <Windows.h>
@@ -60,6 +62,11 @@ struct Options {
     std::string poolPath;
     std::string progressPath;
     std::string serveFolder;
+    std::string checkSeedPath;
+    std::string checkReferencePath;
+    std::string checkBaselinePath;
+    std::string shareChoicesPath;
+    std::string sharePairsPath;
     bool poolOnly = false;
     ComboRando::CwFillRules rules;
     std::string songs = "native";
@@ -335,6 +342,16 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             options.poolOnly = true;
         } else if (flag == "--serve") {
             options.serveFolder = value;
+        } else if (flag == "--check-seed") {
+            options.checkSeedPath = value;
+        } else if (flag == "--check-reference") {
+            options.checkReferencePath = value;
+        } else if (flag == "--check-baseline") {
+            options.checkBaselinePath = value;
+        } else if (flag == "--share-arguments") {
+            options.shareChoicesPath = value;
+        } else if (flag == "--share-pairs") {
+            options.sharePairsPath = value;
         } else if (flag == "--dumps") {
             options.dumpDirectory = value;
         } else if (flag == "--plentiful-mod-items") {
@@ -352,7 +369,8 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             return false;
         }
     }
-    return !options.ootDirectory.empty() && !options.mmDirectory.empty();
+    const bool needsNoGame = !options.checkSeedPath.empty() || !options.shareChoicesPath.empty();
+    return (!options.ootDirectory.empty() && !options.mmDirectory.empty()) || needsNoGame;
 }
 
 bool AttachGames(const Options& options) {
@@ -1195,6 +1213,59 @@ int Serve(const Options& served) {
     }
 }
 
+nlohmann::json ReadJsonFile(const std::string& path) {
+    return path.empty() ? nlohmann::json() : nlohmann::json::parse(std::ifstream(path), nullptr, false);
+}
+
+// Checks a generated seed against the same --shared/--unshared it was generated with; needs no game.
+int CheckSeedFile(const Options& options) {
+    const nlohmann::json seed = ReadJsonFile(options.checkSeedPath);
+    if (!seed.is_object()) {
+        std::cerr << "[fleet-seedgen] could not read " << options.checkSeedPath << "\n";
+        return 2;
+    }
+    const nlohmann::json baseline = ReadJsonFile(options.checkBaselinePath);
+    const ComboRando::SeedShareCheck::Expected expected = {
+        .sharedMask = options.sharedMask,
+        .unsharedPairs = { options.unsharedPairs.begin(), options.unsharedPairs.end() },
+        .baselinePairs = baseline.is_object() ? baseline.value("pairs", nlohmann::json::array())
+                                              : nlohmann::json::array(),
+    };
+    const auto report =
+        ComboRando::SeedShareCheck::CheckSeed(seed, ReadJsonFile(options.checkReferencePath), expected);
+    const nlohmann::json result = { { "passed", report.failures.empty() },
+                                    { "failures", report.failures },
+                                    { "summary", report.summary } };
+    std::cout << result.dump(2) << "\n";
+    if (!options.outputPath.empty()) {
+        std::ofstream(options.outputPath) << result.dump(2);
+    }
+    return report.failures.empty() ? 0 : 1;
+}
+
+std::string JoinCommaList(const auto& keys) {
+    std::string joined;
+    for (const std::string& key : keys) {
+        joined += (joined.empty() ? "" : ",") + key;
+    }
+    return joined;
+}
+
+// Turns a launcher shared.json into the --shared/--unshared the launcher passes, through the launcher's own code.
+int PrintShareArguments(const Options& options) {
+    ComboRando::ShareChoices choices;
+    choices.ReadJson(ReadJsonFile(options.shareChoicesPath));
+    const nlohmann::json pairsFile = ReadJsonFile(options.sharePairsPath);
+    const nlohmann::json pairs =
+        pairsFile.is_object() ? pairsFile.value("pairs", nlohmann::json::array()) : nlohmann::json::array();
+    choices.LearnPairRows(ComboRando::ListSharePairRows(pairs));
+    std::cout << nlohmann::json{ { "shared", JoinCommaList(choices.SharedOptionKeys()) },
+                                 { "unshared", JoinCommaList(choices.UnsharedPairs()) } }
+                     .dump()
+              << "\n";
+    return 0;
+}
+
 int GenerateSeed(int argc, char* argv[]) {
     Options options;
     if (!ParseOptions(argc, argv, options)) {
@@ -1204,8 +1275,16 @@ int GenerateSeed(int argc, char* argv[]) {
                      "                     [--unshared modItemKey,...]\n"
                      "                     [--cross dungeons,expanded,interiors,shops,doorInteriors,grottos]\n"
                      "                     [--dumps <folder>]\n"
-                     "       fleet-seedgen --oot <Ship folder> --mm <2Ship folder> --playthrough spoiler.json\n";
+                     "       fleet-seedgen --oot <Ship folder> --mm <2Ship folder> --playthrough spoiler.json\n"
+                     "       fleet-seedgen --check-seed seed.json [--check-reference unshared.json]\n"
+                     "                     [--check-baseline pairs.json] [--shared ...] [--unshared ...] [--out report]\n";
         return 2;
+    }
+    if (!options.checkSeedPath.empty()) {
+        return CheckSeedFile(options);
+    }
+    if (!options.shareChoicesPath.empty()) {
+        return PrintShareArguments(options);
     }
     const bool commandLineGoal = options.goal.hunt || options.start != StartingGame::Oot;
 

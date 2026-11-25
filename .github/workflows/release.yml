@@ -78,6 +78,7 @@ jobs:
     if: inputs.publish
     needs: package
     runs-on: ubuntu-22.04
+    environment: release-signing
     permissions:
       contents: write
     steps:
@@ -87,6 +88,17 @@ jobs:
           pattern: package-*
           path: dist
           merge-multiple: true
+      # Fleet's updater reads releases/latest/download/fleet-release.json, so the public page carries it.
+      - name: Sign the updater manifest
+        env:
+          FLEET_RELEASE_SIGNING_KEY: ${{ secrets.FLEET_RELEASE_SIGNING_KEY }}
+        run: |
+          python -m pip install --quiet cryptography
+          BASE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/nei-unbound-release"
+          python release/fleet_release_manifest.py --version "$(cat VERSION)" \
+                 --page "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/nei-unbound-release" --release-base "$BASE" \
+                 --asset "windows_x64=dist/Fleet-windows.zip" --asset "linux_x64=dist/Fleet-linux.zip" \
+                 --asset "darwin=dist/Fleet-mac.zip" --output dist/fleet-release.json
       # Two fixed pages whose ZIPs are replaced in place, like the games' download pages.
       - name: Publish
         env:
@@ -102,5 +114,6 @@ jobs:
             gh release edit "$tag" --title "$title" --notes-file release/README-players.txt --prerelease="$prerelease" \
               --latest="$([ "$prerelease" = false ] && echo true || echo false)"
           }
-          publish nei-unbound-release "Fleet $VERSION" false "dist/Fleet-windows.zip dist/Fleet-linux.zip dist/Fleet-mac.zip"
+          publish nei-unbound-release "Fleet $VERSION" false \
+                  "dist/Fleet-windows.zip dist/Fleet-linux.zip dist/Fleet-mac.zip dist/fleet-release.json"
           publish nei-unbound-modders "Fleet $VERSION — Unsafe edition" true "dist/Fleet-*-unsafe.zip"

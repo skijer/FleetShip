@@ -5,8 +5,13 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <fstream>
+#include <functional>
 #include <future>
+#include <iterator>
+#include <optional>
+#include <set>
 #include <stdexcept>
 #include <vector>
 #include <nlohmann/json.hpp>
@@ -185,28 +190,63 @@ std::vector<uint8_t> DecodeHex(const std::string& value, size_t count) {
     return bytes;
 }
 
-Json VerifyManifest(const std::vector<uint8_t>& bytes, const GameInstall& game) {
-    if (std::all_of(game.key, game.key + 32, [](uint8_t value) { return value == 0; })) {
-        throw std::runtime_error(std::string(game.name) +
-                                 " has no trusted release key in this Fleet build. Choose an existing installation.");
-    }
+constexpr const char* ReleaseDomain = "unbound-release-v1";
+constexpr const char* CatalogDomain = "unbound-catalog-v1";
+
+bool IsUnsetKey(const uint8_t* key) {
+    return std::all_of(key, key + 32, [](uint8_t value) { return value == 0; });
+}
+
+std::string OpenSignedDocument(const std::vector<uint8_t>& bytes, const uint8_t* key, const std::string& domain) {
     const Json envelope = Json::parse(bytes.begin(), bytes.end());
     const std::string payload = envelope.at("payload").get<std::string>();
     const auto signature = DecodeHex(envelope.at("signature").get<std::string>(), 64);
-    const std::string message = "unbound-release-v1\n" + payload;
-    if (payload.empty() ||
-        crypto_ed25519_check(signature.data(), game.key, reinterpret_cast<const uint8_t*>(message.data()),
-                             message.size()) != 0) {
-        throw std::runtime_error("The release signature does not match the game's trusted key.");
+    const std::string message = domain + "\n" + payload;
+    if (payload.empty() || crypto_ed25519_check(signature.data(), key, reinterpret_cast<const uint8_t*>(message.data()),
+                                                message.size()) != 0) {
+        throw std::runtime_error("The signature does not match the trusted key.");
     }
-    const Json release = Json::parse(payload);
+    return payload;
+}
+
+Json ReadReleaseManifest(const std::vector<uint8_t>& bytes, const uint8_t* key) {
+    const Json release = Json::parse(OpenSignedDocument(bytes, key, ReleaseDomain));
     if (release.at("format") != 1 || release.at("version").get<std::string>().empty()) {
         throw std::runtime_error("Unsupported release manifest.");
     }
     return release;
 }
 
-void ExtractArchive(const std::vector<uint8_t>& bytes, const fs::path& target, const GameInstall& game) {
+Json VerifyManifest(const std::vector<uint8_t>& bytes, const GameInstall& game) {
+    if (IsUnsetKey(game.key)) {
+        throw std::runtime_error(std::string(game.name) +
+                                 " has no trusted release key in this Fleet build. Choose an existing installation.");
+    }
+    return ReadReleaseManifest(bytes, game.key);
+}
+
+void RequireHash(const std::vector<uint8_t>& bytes, uint64_t size, const std::string& hash) {
+    const auto expected = DecodeHex(hash, 64);
+    std::array<uint8_t, 64> actual{};
+    crypto_blake2b(actual.data(), actual.size(), bytes.data(), bytes.size());
+    if (bytes.size() != size || !std::equal(actual.begin(), actual.end(), expected.begin())) {
+        throw std::runtime_error("The download's size or BLAKE2b hash does not match the signed document.");
+    }
+}
+
+std::vector<uint8_t> DownloadVerified(const std::string& url, uint64_t size, const std::string& hash,
+                                      std::atomic<size_t>& progress) {
+    if (size == 0 || size > 1024ull * 1024 * 1024) {
+        throw std::runtime_error("Invalid download size.");
+    }
+    progress.store(0);
+    auto bytes = Download(url, size, progress);
+    RequireHash(bytes, size, hash);
+    return bytes;
+}
+
+// Every entry lands inside staging, which must not exist yet.
+void ExtractZip(const std::vector<uint8_t>& bytes, const fs::path& staging) {
     zip_error_t error;
     zip_error_init(&error);
     zip_source_t* source = zip_source_buffer_create(bytes.data(), bytes.size(), 0, &error);
@@ -219,7 +259,6 @@ void ExtractArchive(const std::vector<uint8_t>& bytes, const fs::path& target, c
         throw std::runtime_error("The release asset is not a valid ZIP archive.");
     }
     zip_error_fini(&error);
-    const fs::path staging = target.string() + ".installing";
     try {
         if (fs::exists(staging)) {
             throw std::runtime_error("An earlier install staging folder exists: " + staging.string());
@@ -280,26 +319,6 @@ void ExtractArchive(const std::vector<uint8_t>& bytes, const fs::path& target, c
                 throw std::runtime_error("Could not extract a complete ZIP entry.");
             }
         }
-        fs::path install;
-        for (const auto& entry : fs::recursive_directory_iterator(staging)) {
-            if (entry.is_regular_file() && entry.path().filename() == game.module) {
-                if (!install.empty()) {
-                    throw std::runtime_error("Release contains more than one game installation.");
-                }
-                install = entry.path().parent_path();
-            }
-        }
-        if (install.empty() || !fs::is_regular_file(install / game.archive)) {
-            throw std::runtime_error("Release is missing its game DLL or port archive.");
-        }
-        if (fs::exists(target)) {
-            const fs::path backup = target.string() + ".before-install";
-            if (fs::exists(backup) || fs::is_symlink(target)) {
-                throw std::runtime_error("Existing backup or linked game folder: choose an existing install instead.");
-            }
-            fs::rename(target, backup);
-        }
-        fs::rename(install, target);
     } catch (...) {
         zip_discard(archive);
         throw;
@@ -307,8 +326,38 @@ void ExtractArchive(const std::vector<uint8_t>& bytes, const fs::path& target, c
     zip_discard(archive);
 }
 
+fs::path FindFolderHolding(const fs::path& root, const std::string& fileName) {
+    fs::path found;
+    for (const auto& entry : fs::recursive_directory_iterator(root)) {
+        if (entry.is_regular_file() && entry.path().filename() == fileName) {
+            if (!found.empty()) {
+                throw std::runtime_error("The release holds more than one " + fileName + ".");
+            }
+            found = entry.path().parent_path();
+        }
+    }
+    return found;
+}
+
+void ExtractArchive(const std::vector<uint8_t>& bytes, const fs::path& target, const GameInstall& game) {
+    const fs::path staging = target.string() + ".installing";
+    ExtractZip(bytes, staging);
+    const fs::path install = FindFolderHolding(staging, game.module);
+    if (install.empty() || !fs::is_regular_file(install / game.archive)) {
+        throw std::runtime_error("Release is missing its game DLL or port archive.");
+    }
+    if (fs::exists(target)) {
+        const fs::path backup = target.string() + ".before-install";
+        if (fs::exists(backup) || fs::is_symlink(target)) {
+            throw std::runtime_error("Existing backup or linked game folder: choose an existing install instead.");
+        }
+        fs::rename(target, backup);
+    }
+    fs::rename(install, target);
+}
+
 void InstallGame(const fs::path& target, const GameInstall& game) {
-    if (std::all_of(game.key, game.key + 32, [](uint8_t value) { return value == 0; })) {
+    if (IsUnsetKey(game.key)) {
         throw std::runtime_error(std::string(game.name) +
                                  " has no trusted release key in this Fleet build. Choose an existing installation.");
     }
@@ -316,18 +365,8 @@ void InstallGame(const fs::path& target, const GameInstall& game) {
     auto work = std::async(std::launch::async, [&] {
         const Json release = VerifyManifest(Download(game.manifest, 4 * 1024 * 1024, progress), game);
         const Json asset = release.at("assets").at("windows_x64");
-        const uint64_t size = asset.at("size").get<uint64_t>();
-        if (size == 0 || size > 1024ull * 1024 * 1024) {
-            throw std::runtime_error("Invalid Windows asset size.");
-        }
-        progress.store(0);
-        const auto bytes = Download(asset.at("url").get<std::string>(), size, progress);
-        const auto expected = DecodeHex(asset.at("hash").get<std::string>(), 64);
-        std::array<uint8_t, 64> hash{};
-        crypto_blake2b(hash.data(), hash.size(), bytes.data(), bytes.size());
-        if (bytes.size() != size || !std::equal(hash.begin(), hash.end(), expected.begin())) {
-            throw std::runtime_error("The Windows asset's size or BLAKE2b hash does not match the signed manifest.");
-        }
+        const auto bytes = DownloadVerified(asset.at("url").get<std::string>(), asset.at("size").get<uint64_t>(),
+                                            asset.at("hash").get<std::string>(), progress);
         ExtractArchive(bytes, target, game);
     });
     SDL_InitSubSystem(SDL_INIT_VIDEO);
@@ -409,4 +448,389 @@ bool EnsureGameInstalls(const fs::path& folder, std::string& oot, std::string& m
         }
     }
     return true;
+}
+
+namespace {
+constexpr const char* FleetManifestUrl = "https://github.com/skijer/FleetShip/releases/latest/download/fleet-release.json";
+constexpr const char* FleetInstallFile = "fleet-install.json";
+constexpr const char* FleetStaging = "fleet.updating";
+constexpr const char* ReplacedSuffix = ".old";
+constexpr size_t DocumentLimit = 16 * 1024 * 1024;
+
+struct ModCatalog {
+    const char* gameKey;
+    const char* shortName;
+    const char* url;
+    const uint8_t* key;
+};
+
+const ModCatalog Catalogs[] = {
+    { "oot", "OoT", "https://github.com/skijer/Shipwright/releases/download/mods/catalog.json", OotModKey },
+    { "mm", "MM", "https://github.com/skijer/2ship2harkinian/releases/download/mods/catalog.json", MmModKey },
+};
+
+const char* GameTitle(size_t game) {
+    return game == 0 ? "Ocarina of Time" : "Majora's Mask";
+}
+
+std::vector<uint8_t> ReadFileBytes(const fs::path& path) {
+    std::ifstream file(path, std::ios::binary);
+    return std::vector<uint8_t>(std::istreambuf_iterator<char>(file), {});
+}
+
+std::string HashHex(const std::vector<uint8_t>& bytes) {
+    std::array<uint8_t, 64> hash{};
+    crypto_blake2b(hash.data(), hash.size(), bytes.data(), bytes.size());
+    std::string hex;
+    for (const uint8_t byte : hash) {
+        hex += "0123456789abcdef"[byte >> 4];
+        hex += "0123456789abcdef"[byte & 15];
+    }
+    return hex;
+}
+
+std::vector<uint8_t> DownloadDocument(const std::string& url) {
+    std::atomic<size_t> progress{ 0 };
+    return Download(url, DocumentLimit, progress);
+}
+
+// The fork version string is compiled into the game module, so it is read without loading the game.
+std::string ReadModuleVersion(const fs::path& module) {
+    const auto bytes = ReadFileBytes(module);
+    const std::string marker = "-unbound";
+    const auto isVersionChar = [](uint8_t value) { return std::isdigit(value) || value == '.'; };
+    for (auto found = std::search(bytes.begin(), bytes.end(), marker.begin(), marker.end()); found != bytes.end();
+         found = std::search(found + 1, bytes.end(), marker.begin(), marker.end())) {
+        auto begin = found;
+        while (begin != bytes.begin() && isVersionChar(*(begin - 1))) {
+            --begin;
+        }
+        auto end = found + marker.size();
+        while (end != bytes.end() && isVersionChar(*end)) {
+            ++end;
+        }
+        const bool isVersion = begin != found && end != found + marker.size();
+        if (isVersion) {
+            return std::string(begin, end);
+        }
+    }
+    return "";
+}
+
+std::optional<Json> ReadPackageManifest(const fs::path& package) {
+    int error = 0;
+    zip_t* archive = zip_open(package.string().c_str(), ZIP_RDONLY, &error);
+    if (archive == nullptr) {
+        return std::nullopt;
+    }
+    std::optional<Json> manifest;
+    zip_stat_t stat{};
+    if (zip_stat(archive, "manifest.json", 0, &stat) == 0 && stat.size < DocumentLimit) {
+        std::string text(stat.size, '\0');
+        zip_file_t* file = zip_fopen(archive, "manifest.json", 0);
+        if (file != nullptr && zip_fread(file, text.data(), stat.size) == static_cast<zip_int64_t>(stat.size)) {
+            manifest = Json::parse(text, nullptr, false);
+        }
+        if (file != nullptr) {
+            zip_fclose(file);
+        }
+    }
+    zip_discard(archive);
+    return manifest;
+}
+
+std::string VersionText(const Json& value) {
+    return value.is_string() ? value.get<std::string>() : value.is_number() ? value.dump() : "";
+}
+
+std::optional<Json> ReadInstallInfo(const fs::path& fleetFolder) {
+    std::ifstream input(fleetFolder / FleetInstallFile);
+    if (!input) {
+        return std::nullopt;
+    }
+    Json info = Json::parse(input, nullptr, false);
+    return info.is_object() ? std::optional<Json>(info) : std::nullopt;
+}
+
+UpdateEntry EntryFromAsset(UpdateKind kind, const Json& asset) {
+    UpdateEntry entry{ kind };
+    entry.url = asset.at("url").get<std::string>();
+    entry.size = asset.at("size").get<uint64_t>();
+    entry.hash = asset.at("hash").get<std::string>();
+    return entry;
+}
+
+void AddFleetEntry(UpdateReport& report, const UpdateFolders& folders, const std::string& installed) {
+    const Json release = ReadReleaseManifest(DownloadDocument(FleetManifestUrl), FleetReleaseKey);
+    const std::string latest = release.at("version").get<std::string>();
+    if (latest == installed) {
+        return;
+    }
+    UpdateEntry entry = EntryFromAsset(UpdateKind::Fleet, release.at("assets").at("windows_x64"));
+    entry.label = "Fleet";
+    entry.installed = installed;
+    entry.latest = latest;
+    entry.target = folders.fleet;
+    report.entries.push_back(std::move(entry));
+}
+
+void AddGameEntry(UpdateReport& report, size_t game, const fs::path& folder) {
+    const Json release = VerifyManifest(DownloadDocument(Games[game].manifest), Games[game]);
+    const std::string latest = release.at("version").get<std::string>();
+    const std::string installed = ReadModuleVersion(folder / Games[game].module);
+    if (installed == latest) {
+        return;
+    }
+    UpdateEntry entry = EntryFromAsset(UpdateKind::Game, release.at("assets").at("windows_x64"));
+    entry.label = GameTitle(game);
+    entry.installed = installed.empty() ? "unknown" : installed;
+    entry.latest = latest;
+    entry.target = folder;
+    report.entries.push_back(std::move(entry));
+}
+
+const Json* FindModBuild(const Json& mod, const char* gameKey) {
+    const auto builds = mod.find("builds");
+    if (builds != mod.end() && builds->is_object() && builds->contains(gameKey)) {
+        return &builds->at(gameKey);
+    }
+    const auto build = mod.find("build");
+    return build != mod.end() && build->is_object() ? &*build : nullptr;
+}
+
+std::vector<fs::path> ListPackages(const fs::path& folder) {
+    std::vector<fs::path> packages;
+    std::error_code error;
+    for (const auto& file : fs::directory_iterator(folder, error)) {
+        const std::string name = file.path().filename().string();
+        if (name.ends_with(".o2r") || name.ends_with(".o2r.disabled")) {
+            packages.push_back(file.path());
+        }
+    }
+    return packages;
+}
+
+std::string PackageId(const fs::path& package) {
+    const std::string name = package.filename().string();
+    return name.substr(0, name.find(".o2r"));
+}
+
+// Fleet's own mods only work with what the store lists as their dependencies, transitively.
+std::set<std::string> FindFleetDependencies(const Json& mods, const fs::path& fleetMods) {
+    std::set<std::string> needed;
+    std::function<void(const std::string&)> visit = [&](const std::string& id) {
+        if (!mods.contains(id)) {
+            return;
+        }
+        for (const Json& dependency : mods.at(id).value("dependencies", Json::array())) {
+            if (dependency.is_string() && needed.insert(dependency.get<std::string>()).second) {
+                visit(dependency.get<std::string>());
+            }
+        }
+    };
+    for (const fs::path& package : ListPackages(fleetMods)) {
+        visit(PackageId(package));
+    }
+    return needed;
+}
+
+UpdateEntry ModEntry(const ModCatalog& catalog, const Json& mod, const std::string& id, const Json& build) {
+    UpdateEntry entry = EntryFromAsset(UpdateKind::Mod, build);
+    entry.label = mod.value("name", id) + " mod (" + catalog.shortName + ")";
+    entry.latest = VersionText(mod.value("version", Json()));
+    return entry;
+}
+
+void AddModEntries(UpdateReport& report, const ModCatalog& catalog, const fs::path& gameFolder,
+                   const fs::path& fleetFolder) {
+    const Json payload = Json::parse(OpenSignedDocument(DownloadDocument(catalog.url), catalog.key, CatalogDomain));
+    const Json& mods = payload.at("mods");
+    const fs::path storeFolder = gameFolder / "mods" / "neistore";
+    const fs::path fleetMods = fleetFolder / "mods" / catalog.gameKey;
+    std::set<std::string> installed;
+    for (const fs::path& folder : { gameFolder / "mods", storeFolder, fleetMods }) {
+        for (const fs::path& package : ListPackages(folder)) {
+            const std::string id = PackageId(package);
+            const bool isNew = installed.insert(id).second;
+            const Json* build = mods.contains(id) ? FindModBuild(mods.at(id), catalog.gameKey) : nullptr;
+            if (!isNew || package.extension() != ".o2r" || build == nullptr ||
+                build->value("hash", "") == HashHex(ReadFileBytes(package))) {
+                continue;
+            }
+            UpdateEntry entry = ModEntry(catalog, mods.at(id), id, *build);
+            const auto manifest = ReadPackageManifest(package);
+            entry.installed = manifest ? VersionText(manifest->value("version", Json())) : "";
+            entry.target = package;
+            report.entries.push_back(std::move(entry));
+        }
+    }
+    for (const std::string& id : FindFleetDependencies(mods, fleetMods)) {
+        const Json* build = mods.contains(id) ? FindModBuild(mods.at(id), catalog.gameKey) : nullptr;
+        if (installed.contains(id) || build == nullptr) {
+            continue;
+        }
+        UpdateEntry entry = ModEntry(catalog, mods.at(id), id, *build);
+        entry.installed = "missing";
+        entry.target = storeFolder / (id + ".o2r");
+        report.entries.push_back(std::move(entry));
+    }
+}
+
+// Both games need the other game's assets extracted from the player's own ROM; nothing can download them.
+void AddMissingExtractionNotes(UpdateReport& report, const fs::path& ootFolder, const fs::path& mmFolder) {
+    if (!fs::exists(ootFolder / "mods" / "mm.o2r")) {
+        report.problems.push_back("Ocarina of Time has no Majora's Mask assets: open Ship\\soh.exe once and choose "
+                                  "your Majora's Mask ROM when it asks.");
+    }
+    if (!fs::exists(mmFolder / "mods" / "oot.o2r")) {
+        report.problems.push_back("Majora's Mask has no Ocarina of Time assets: open 2Ship\\2ship.exe once and "
+                                  "choose your Ocarina of Time ROM when it asks.");
+    }
+}
+
+void CopyTree(const fs::path& source, const fs::path& target) {
+    for (const auto& file : fs::recursive_directory_iterator(source)) {
+        if (!file.is_regular_file()) {
+            continue;
+        }
+        const fs::path destination = target / fs::relative(file.path(), source);
+        fs::create_directories(destination.parent_path());
+        fs::copy_file(file.path(), destination, fs::copy_options::overwrite_existing);
+    }
+}
+
+// A running executable or a loaded library cannot be overwritten, but it can be renamed out of the way.
+void ReplaceInUseFile(const fs::path& source, const fs::path& target) {
+    if (fs::exists(target)) {
+        const fs::path replaced = target.string() + ReplacedSuffix;
+        std::error_code error;
+        fs::remove(replaced, error);
+        fs::rename(target, replaced);
+    }
+    fs::copy_file(source, target);
+}
+
+void ApplyMod(const UpdateEntry& entry, std::atomic<size_t>& progress) {
+    const auto bytes = DownloadVerified(entry.url, entry.size, entry.hash, progress);
+    const fs::path download = entry.target.string() + ".download";
+    fs::create_directories(entry.target.parent_path());
+    std::ofstream(download, std::ios::binary).write(reinterpret_cast<const char*>(bytes.data()), bytes.size());
+    fs::rename(download, entry.target);
+}
+
+void ApplyGame(const UpdateEntry& entry, const UpdateFolders& folders, std::atomic<size_t>& progress) {
+    const auto bytes = DownloadVerified(entry.url, entry.size, entry.hash, progress);
+    const GameInstall& game = entry.target == folders.oot ? Games[0] : Games[1];
+    const fs::path staging = entry.target.string() + ".updating";
+    fs::remove_all(staging);
+    ExtractZip(bytes, staging);
+    const fs::path package = FindFolderHolding(staging, game.module);
+    if (package.empty()) {
+        throw std::runtime_error(std::string(game.name) + " release is missing its game files.");
+    }
+    CopyTree(package, entry.target);
+    fs::remove_all(staging);
+}
+
+// Only Fleet's own files: the games beside it are updated as their own entries.
+void ApplyFleet(const UpdateEntry& entry, std::atomic<size_t>& progress) {
+    const auto bytes = DownloadVerified(entry.url, entry.size, entry.hash, progress);
+    const fs::path staging = entry.target / FleetStaging;
+    fs::remove_all(staging);
+    ExtractZip(bytes, staging);
+    const fs::path package = FindFolderHolding(staging, FleetInstallFile);
+    if (package.empty()) {
+        throw std::runtime_error("The Fleet release is missing its install description.");
+    }
+    for (const auto& file : fs::directory_iterator(package)) {
+        if (file.is_regular_file()) {
+            ReplaceInUseFile(file.path(), entry.target / file.path().filename());
+        } else if (file.path().filename() == "mods") {
+            CopyTree(file.path(), entry.target / "mods");
+        }
+    }
+    fs::remove_all(staging);
+}
+} // namespace
+
+UpdateReport CheckForUpdates(const UpdateFolders& folders) {
+    UpdateReport report;
+#ifndef _WIN32
+    report.unavailableReason = "Fleet downloads updates on Windows; here, download the latest Fleet package.";
+    return report;
+#endif
+    const auto info = ReadInstallInfo(folders.fleet);
+    if (!info) {
+        report.unavailableReason = "This Fleet was not installed from a release package, so it does not update.";
+        return report;
+    }
+    if (info->value("edition", "") != "release") {
+        report.unavailableReason = "The modders edition does not update itself; download its latest package instead.";
+        return report;
+    }
+    const auto attempt = [&report](const std::string& source, const auto& check) {
+        try {
+            check();
+        } catch (const std::exception& error) { report.problems.push_back(source + ": " + error.what()); }
+    };
+    attempt("Fleet", [&] { AddFleetEntry(report, folders, info->value("version", "")); });
+    const fs::path gameFolders[] = { folders.oot, folders.mm };
+    for (size_t game = 0; game < std::size(Games); ++game) {
+        attempt(GameTitle(game), [&] { AddGameEntry(report, game, gameFolders[game]); });
+    }
+    for (size_t game = 0; game < std::size(Catalogs); ++game) {
+        attempt(std::string(GameTitle(game)) + " mods",
+                [&] { AddModEntries(report, Catalogs[game], gameFolders[game], folders.fleet); });
+    }
+    AddMissingExtractionNotes(report, folders.oot, folders.mm);
+    return report;
+}
+
+void ApplyUpdate(const UpdateEntry& entry, const UpdateFolders& folders, std::atomic<size_t>& progress) {
+    switch (entry.kind) {
+        case UpdateKind::Mod:
+            ApplyMod(entry, progress);
+            break;
+        case UpdateKind::Game:
+            ApplyGame(entry, folders, progress);
+            break;
+        case UpdateKind::Fleet:
+            ApplyFleet(entry, progress);
+            break;
+        default:
+            throw std::runtime_error("Unknown update kind.");
+    }
+}
+
+void RestartFleet() {
+#ifdef _WIN32
+    std::array<wchar_t, 32768> path{};
+    const DWORD length = GetModuleFileNameW(nullptr, path.data(), static_cast<DWORD>(path.size()));
+    if (length == 0 || length >= path.size()) {
+        throw std::runtime_error("Could not find Fleet's executable to restart it.");
+    }
+    std::wstring commandLine = L"\"" + std::wstring(path.data(), length) + L"\"";
+    const std::wstring folder = fs::path(path.data()).parent_path().wstring();
+    STARTUPINFOW startup{ sizeof(startup) };
+    PROCESS_INFORMATION process{};
+    if (!CreateProcessW(nullptr, commandLine.data(), nullptr, nullptr, FALSE, 0, nullptr, folder.c_str(), &startup,
+                        &process)) {
+        throw std::runtime_error("Could not restart Fleet.");
+    }
+    CloseHandle(process.hThread);
+    CloseHandle(process.hProcess);
+#endif
+}
+
+void RemoveReplacedFiles(const fs::path& fleetFolder) {
+    if (!ReadInstallInfo(fleetFolder)) {
+        return;
+    }
+    std::error_code error;
+    fs::remove_all(fleetFolder / FleetStaging, error);
+    for (const auto& file : fs::directory_iterator(fleetFolder, error)) {
+        if (file.path().extension() == ReplacedSuffix) {
+            fs::remove(file.path(), error);
+        }
+    }
 }

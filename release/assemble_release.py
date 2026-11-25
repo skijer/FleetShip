@@ -1,5 +1,6 @@
 """Assemble a player's Fleet zip from the built program, the published games and Fleet's own mods."""
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -95,6 +96,9 @@ def main():
         host.chmod(0o755)
     shutil.copytree(args.mods, staging / "mods")
     shutil.copy2(REPOSITORY_ROOT / "release" / "README-players.txt", staging / "README.txt")
+    # Fleet's updater reads this to know its version and to update only the edition it was installed as.
+    (staging / "fleet-install.json").write_text(json.dumps({"version": version, "edition": args.edition}) + "\n",
+                                                encoding="utf-8")
     for archive_name, folder in GAME_FOLDERS.items():
         stage_game(args.games / archive_name, staging / folder, args.platform)
     shutil.copy2(staging / "Ship" / "gamecontrollerdb.txt", staging / "gamecontrollerdb.txt")

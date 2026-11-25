@@ -1,4 +1,5 @@
 #pragma once
+#include "GameInstall.h"
 #include <fast/Fast3dGui.h>
 #include <fleet/FleetGameApi.h>
 #include <functional>
@@ -46,7 +47,8 @@ class FleetGui : public Fast::Fast3dGui {
         ItemIconFinder findIcon;
     };
     void SetReviewPrompt(const std::string& game, const std::string& item, const std::string& text);
-    int ChooseGame(int current, int automation = -1);
+    // Without automation the chooser also offers the updates of Fleet, the games and their mods.
+    int ChooseGame(int current, const UpdateFolders& folders, int automation = -1);
 
   private:
     class Menu;

@@ -2086,6 +2086,7 @@ int RunFleet(int argc, char* argv[]) {
     if (sQuietCrashes) {
         SilenceCrashDialogs();
     }
+    RemoveReplacedFiles(InstallFolder());
     if (options.smokeFrames == 0 && !EnsureGameInstalls(InstallFolder(), options.ootDirectory, options.mmDirectory)) {
         return 2;
     }
@@ -2136,7 +2137,9 @@ int RunFleet(int argc, char* argv[]) {
     OpenWindow(options);
     if (!options.internalRestore && (options.smokeFrames == 0 || options.testChoice >= 0)) {
         const int previous = Ship::Context::GetRawInstance()->GetHostConfig()->GetInt("Fleet.GameMode", 0);
-        options.mode = sFleetGui->ChooseGame(previous, options.testChoice);
+        const UpdateFolders folders{ InstallFolder(), std::filesystem::absolute(options.ootDirectory),
+                                     std::filesystem::absolute(options.mmDirectory) };
+        options.mode = sFleetGui->ChooseGame(previous, folders, options.testChoice);
         if (options.mode < 0) {
             return 0;
         }

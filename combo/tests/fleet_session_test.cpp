@@ -96,6 +96,8 @@ void VerifyGoalReached(const std::filesystem::path& folder) {
     ComboSession both;
     both.Open(bothPath, folder / "goal-both", 0);
     Require(!both.ReportGoalReached("oot"), "both: one cleared game rolled the credits");
+    both.RequestCommit();
+    both.CommitIfRequested();
     ComboSession reloaded;
     reloaded.Open(bothPath, folder / "goal-both", 0);
     Require(!reloaded.ReportGoalReached("oot"), "both: a repeated report counted twice");
@@ -131,6 +133,12 @@ void VerifyCloseAndReopen(const std::filesystem::path& folder) {
     const auto saveFile = folder / "close" / "slot0" / "oot" / "Save" / "file1.sav";
     ComboSession session;
     session.Open(seedPath, folder / "close", 0);
+    Require(session.ReportObtained("oot", "Unsaved Chest"), "close: never-saved pickup rejected");
+    std::ofstream(saveFile) << "never saved";
+    session.Close();
+    Require(!std::filesystem::exists(saveFile), "close: a reset saved a file the player never saved");
+    session.Open(seedPath, folder / "close", 0);
+    Require(nlohmann::json::parse(session.Deliveries("mm")).empty(), "close: a reset kept never-saved pickups");
     Require(session.ReportObtained("oot", "Saved Chest"), "close: saved pickup rejected");
     std::ofstream(saveFile) << "saved";
     session.RequestCommit();

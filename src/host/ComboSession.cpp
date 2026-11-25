@@ -195,10 +195,9 @@ void ComboSession::Commit() const {
 
 void ComboSession::RestoreCommitted() const {
     const auto committed = CommittedDirectory();
+    // Open runs first, before any play: a never-saved slot's starting point becomes what a reset returns to.
     if (!std::filesystem::exists(committed)) {
-        if (std::filesystem::exists(mDirectory / "obtained.json")) {
-            Commit();
-        }
+        Commit();
         return;
     }
     for (const char* game : { "oot", "mm" }) {

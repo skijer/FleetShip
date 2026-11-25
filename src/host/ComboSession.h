@@ -15,6 +15,8 @@ class ComboSession {
   public:
     void Open(const std::filesystem::path& seedPath, const std::filesystem::path& directory, int slot,
               bool runtimeTests = false);
+    // Like a console reset: progress since the last commit is dropped. Assumes both games' writes have landed.
+    void Close();
     bool Enabled() const;
     const std::string& Description() const;
     const std::string& SaveDirectory(const std::string& game) const;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <array>
 #include <cstdint>
 #include <filesystem>
@@ -23,25 +25,38 @@ inline void AppendColour(std::vector<char>& bytes, uint16_t pixel) {
     }
 }
 
-inline bool Save(const std::filesystem::path& path) {
+struct Frame {
+    uint32_t width = 0;
+    uint32_t height = 0;
+    std::vector<char> rgb;
+};
+
+// Needs the game to render into its own framebuffer (low-resolution mode); otherwise there is nothing to read.
+inline std::optional<Frame> Grab() {
     const auto window = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
     const auto interpreter = window != nullptr ? window->GetInterpreterWeak().lock() : nullptr;
     if (interpreter == nullptr || !interpreter->mRendersToFb) {
+        return std::nullopt;
+    }
+    Frame frame = { interpreter->mCurDimensions.width, interpreter->mCurDimensions.height, {} };
+    const int source = interpreter->mMsaaLevel > 1 ? interpreter->mGameFbMsaaResolved : interpreter->mGameFb;
+    std::vector<uint16_t> pixels(static_cast<size_t>(frame.width) * frame.height);
+    interpreter->mRapi->ReadFramebufferToCPU(source, frame.width, frame.height, pixels.data());
+    frame.rgb.reserve(pixels.size() * 3);
+    for (const uint16_t pixel : pixels) {
+        AppendColour(frame.rgb, pixel);
+    }
+    return frame;
+}
+
+inline bool Save(const std::filesystem::path& path) {
+    const std::optional<Frame> frame = Grab();
+    if (!frame) {
         return false;
     }
-    const uint32_t width = interpreter->mCurDimensions.width;
-    const uint32_t height = interpreter->mCurDimensions.height;
-    const int source = interpreter->mMsaaLevel > 1 ? interpreter->mGameFbMsaaResolved : interpreter->mGameFb;
-    std::vector<uint16_t> pixels(static_cast<size_t>(width) * height);
-    interpreter->mRapi->ReadFramebufferToCPU(source, width, height, pixels.data());
-    std::vector<char> bytes;
-    bytes.reserve(pixels.size() * 3);
-    for (const uint16_t pixel : pixels) {
-        AppendColour(bytes, pixel);
-    }
     std::ofstream file(path, std::ios::binary);
-    file << "P6\n" << width << " " << height << "\n255\n";
-    file.write(bytes.data(), static_cast<std::streamsize>(bytes.size()));
+    file << "P6\n" << frame->width << " " << frame->height << "\n255\n";
+    file.write(frame->rgb.data(), static_cast<std::streamsize>(frame->rgb.size()));
     return file.good();
 }
 

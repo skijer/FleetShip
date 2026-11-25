@@ -1,0 +1,611 @@
+{
+ "game": "oot",
+ "candidates": [
+  {
+   "key": "oot.anubis",
+   "name": "Anubis",
+   "actorId": 246,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.armos",
+   "name": "Armos",
+   "actorId": 84,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.arwing",
+   "name": "Arwing",
+   "actorId": 315,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.baby_dodongo",
+   "name": "Baby Dodongo",
+   "actorId": 47,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.bari",
+   "name": "Bari",
+   "actorId": 99,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 128
+  },
+  {
+   "key": "oot.beamos",
+   "name": "Beamos",
+   "actorId": 138,
+   "params": 1280,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.skulltula_big",
+   "name": "Big Skulltula",
+   "actorId": 55,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.stalchild_big",
+   "name": "Stalchild (Big)",
+   "actorId": 432,
+   "params": 20,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.biri",
+   "name": "Biri",
+   "actorId": 52,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 128
+  },
+  {
+   "key": "oot.iron_knuckle_black",
+   "name": "Iron Knuckle (Black)",
+   "actorId": 275,
+   "params": 2,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 8
+  },
+  {
+   "key": "oot.tektite_blue",
+   "name": "Blue Tektite",
+   "actorId": 27,
+   "params": -2,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 65536
+  },
+  {
+   "key": "oot.bubble_blue",
+   "name": "Bubble",
+   "actorId": 105,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.moblin_club",
+   "name": "Club Moblin",
+   "actorId": 75,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.dark_link",
+   "name": "Dark Link",
+   "actorId": 51,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 8
+  },
+  {
+   "key": "oot.dinolfos",
+   "name": "Dinolfos",
+   "actorId": 37,
+   "params": -2,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.dodongo",
+   "name": "Dodongo",
+   "actorId": 18,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.keese_fire",
+   "name": "Fire Keese",
+   "actorId": 19,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.flare_dancer",
+   "name": "Flare Dancer",
+   "actorId": 153,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 8
+  },
+  {
+   "key": "oot.floor_tile",
+   "name": "Floor Tile",
+   "actorId": 107,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.floormaster",
+   "name": "Floormaster",
+   "actorId": 142,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.peahat_flying",
+   "name": "Flying Peahat",
+   "actorId": 29,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.flying_pot",
+   "name": "Flying Pot",
+   "actorId": 285,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.freezard",
+   "name": "Freezard",
+   "actorId": 289,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.gerudo_fighter",
+   "name": "Gerudo Thief",
+   "actorId": 407,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 8
+  },
+  {
+   "key": "oot.gibdo",
+   "name": "Gibdo",
+   "actorId": 144,
+   "params": 32766,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.gohma_larva",
+   "name": "Gohma Larva",
+   "actorId": 43,
+   "params": 7,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.guay",
+   "name": "Guay",
+   "actorId": 448,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.keese_ice",
+   "name": "Ice Keese",
+   "actorId": 19,
+   "params": 4,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.keese_fire_invisible",
+   "name": "Invisible Fire Keese",
+   "actorId": 19,
+   "params": -32767,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.floormaster_invisible",
+   "name": "Invisible Floormaster",
+   "actorId": 142,
+   "params": -32768,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.keese_ice_invisible",
+   "name": "Invisible Ice Keese",
+   "actorId": 19,
+   "params": -32764,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.keese_invisible",
+   "name": "Invisible Keese",
+   "actorId": 19,
+   "params": -32766,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.redead_invisible",
+   "name": "Invisible Redead",
+   "actorId": 144,
+   "params": 3,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.skulltula_invisible",
+   "name": "Invisible Skulltula",
+   "actorId": 55,
+   "params": 2,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.stalfos_invisible",
+   "name": "Invisible Stalfos",
+   "actorId": 2,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.keese",
+   "name": "Keese",
+   "actorId": 19,
+   "params": 2,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.deku_baba_large",
+   "name": "Large Deku Baba",
+   "actorId": 85,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.like_like",
+   "name": "Like-Like",
+   "actorId": 221,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.lizalfos",
+   "name": "Lizalfos",
+   "actorId": 37,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.mad_scrub",
+   "name": "Mad Scrub",
+   "actorId": 96,
+   "params": 768,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.wolfos",
+   "name": "Wolfos (Normal)",
+   "actorId": 431,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.peahat_larva",
+   "name": "Peahat Larva",
+   "actorId": 29,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.redead",
+   "name": "Redead",
+   "actorId": 144,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.tektite_red",
+   "name": "Red Tektite",
+   "actorId": 27,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.shabom",
+   "name": "Shabom",
+   "actorId": 45,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.shell_blade",
+   "name": "Shell Blade",
+   "actorId": 197,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 128
+  },
+  {
+   "key": "oot.skulltula",
+   "name": "Skulltula",
+   "actorId": 55,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.skull_kid",
+   "name": "Skull Kid",
+   "actorId": 277,
+   "params": 4159,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.deku_baba",
+   "name": "Small Deku Baba",
+   "actorId": 85,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.stalchild",
+   "name": "Stalchild (Small)",
+   "actorId": 432,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.moblin_spear",
+   "name": "Spear Moblin",
+   "actorId": 75,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.spike",
+   "name": "Spike",
+   "actorId": 236,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 128
+  },
+  {
+   "key": "oot.stalfos",
+   "name": "Stalfos",
+   "actorId": 2,
+   "params": 2,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.stinger",
+   "name": "Stinger",
+   "actorId": 58,
+   "params": 10,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.tailpasaran",
+   "name": "Tailpasaran",
+   "actorId": 53,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.torch_slug",
+   "name": "Torch Slug",
+   "actorId": 56,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.wallmaster",
+   "name": "Wallmaster",
+   "actorId": 17,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.iron_knuckle_white",
+   "name": "Iron Knuckle (White)",
+   "actorId": 275,
+   "params": 3,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 8
+  },
+  {
+   "key": "oot.wolfos_white",
+   "name": "Wolfos (White)",
+   "actorId": 431,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "oot.deku_baba_withered",
+   "name": "Withered Deku Baba",
+   "actorId": 199,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  }
+ ],
+ "superseded": [
+  {
+   "native": "oot.dinolfos",
+   "mod": "mm.dinolfos"
+  }
+ ]
+}

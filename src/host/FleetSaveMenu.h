@@ -61,6 +61,7 @@ class FleetSaveMenu : public Ship::GuiWindow {
     void DrawDungeonItemRows();
     void DrawKeyRingCount();
     void DrawCrossEntranceRows();
+    void DrawBossEntranceRow();
     void DrawStartingEquipment();
     void DrawItemPoolPage();
     void DrawPlandomizerPage();
@@ -69,6 +70,8 @@ class FleetSaveMenu : public Ship::GuiWindow {
     std::optional<Ready> Generated(int slot) const;
     std::optional<Ready> SeedFor(int slot);
     void Complete();
+    // After a session closes in this process: the file select starts over from the slots on disk.
+    void Reopen();
     void Fail(const std::string& error);
     void Automate(int slot, bool resume, bool directStart = true);
     std::optional<std::string> AddDroppedSeed(const std::filesystem::path& file);

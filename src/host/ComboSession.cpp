@@ -142,6 +142,28 @@ std::filesystem::path ComboSession::CommittedDirectory() const {
     return mDirectory / "committed";
 }
 
+void ComboSession::Close() {
+    if (!Enabled()) {
+        return;
+    }
+    CommitIfRequested();
+    RestoreCommitted();
+    mSeed = nlohmann::json();
+    mDirectory.clear();
+    mDescription.clear();
+    mSaveDirectories.clear();
+    mDeliveries.clear();
+    mObtained.clear();
+    mClearedGames.clear();
+    mTiers = nlohmann::json::object();
+    mBottles = nlohmann::json::object();
+    mLive = nlohmann::json::object();
+    mSharedTiers.clear();
+    mListedItems.clear();
+    mActiveGame.clear();
+    mCommitRequested = false;
+}
+
 void ComboSession::RequestCommit() {
     mCommitRequested = true;
 }

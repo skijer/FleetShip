@@ -39,6 +39,13 @@ class FleetGui : public Fast::Fast3dGui {
     void SetItemTools(ItemTools tools);
     void OpenRandomizer();
     void SetLoading(const std::string& text);
+    struct ReviewPrompt {
+        std::string game;
+        std::string item;
+        std::string text;
+        ItemIconFinder findIcon;
+    };
+    void SetReviewPrompt(const std::string& game, const std::string& item, const std::string& text);
     int ChooseGame(int current, int automation = -1);
 
   private:
@@ -54,4 +61,6 @@ class FleetGui : public Fast::Fast3dGui {
     std::shared_ptr<Menu> mFleetMenu;
     std::shared_ptr<std::string> mLoadingText = std::make_shared<std::string>();
     std::shared_ptr<Ship::GuiWindow> mLoadingOverlay;
+    std::shared_ptr<ReviewPrompt> mReviewPrompt = std::make_shared<ReviewPrompt>();
+    std::shared_ptr<Ship::GuiWindow> mReviewOverlay;
 };

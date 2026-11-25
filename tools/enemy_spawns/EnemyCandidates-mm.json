@@ -1,0 +1,436 @@
+{
+ "game": "mm",
+ "candidates": [
+  {
+   "key": "mm.armos",
+   "name": "Armos",
+   "actorId": 50,
+   "params": -1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.bad_bat",
+   "name": "Bad Bat",
+   "actorId": 347,
+   "params": -255,
+   "spawnHeight": 50,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.beamos",
+   "name": "Beamos",
+   "actorId": 71,
+   "params": -256,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 2
+  },
+  {
+   "key": "mm.big_poe",
+   "name": "Big Poe",
+   "actorId": 520,
+   "params": -256,
+   "spawnHeight": 50,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 10
+  },
+  {
+   "key": "mm.blue_bubble",
+   "name": "Blue Bubble",
+   "actorId": 62,
+   "params": -1,
+   "spawnHeight": 50,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.boe",
+   "name": "Boe",
+   "actorId": 356,
+   "params": -256,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.captain_keeta",
+   "name": "Captain Keeta",
+   "actorId": 655,
+   "params": 127,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 10
+  },
+  {
+   "key": "mm.chuchu",
+   "name": "Chuchu",
+   "actorId": 330,
+   "params": -256,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.deku_baba",
+   "name": "Deku Baba",
+   "actorId": 51,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.dinolfos",
+   "name": "Dinolfos",
+   "actorId": 25,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 8
+  },
+  {
+   "key": "mm.dodongo",
+   "name": "Dodongo",
+   "actorId": 11,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.dragonfly",
+   "name": "Dragonfly",
+   "actorId": 265,
+   "params": 0,
+   "spawnHeight": 75,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.eeno",
+   "name": "Eeno",
+   "actorId": 486,
+   "params": -256,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.fire_keese",
+   "name": "Fire Keese",
+   "actorId": 12,
+   "params": 0,
+   "spawnHeight": 75,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.ice_keese",
+   "name": "Ice Keese",
+   "actorId": 12,
+   "params": 4,
+   "spawnHeight": 75,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.keese",
+   "name": "Keese",
+   "actorId": 12,
+   "params": 2,
+   "spawnHeight": 75,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.floormaster",
+   "name": "Floormaster",
+   "actorId": 74,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.freezard",
+   "name": "Freezard",
+   "actorId": 143,
+   "params": 2,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 2
+  },
+  {
+   "key": "mm.garo_master",
+   "name": "Garo Master",
+   "actorId": 386,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 8
+  },
+  {
+   "key": "mm.gomess",
+   "name": "Gomess",
+   "actorId": 67,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 10
+  },
+  {
+   "key": "mm.guay",
+   "name": "Guay",
+   "actorId": 241,
+   "params": 0,
+   "spawnHeight": 75,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.hiploop",
+   "name": "Hiploop",
+   "actorId": 489,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.iron_knuckle",
+   "name": "Iron Knuckle",
+   "actorId": 132,
+   "params": -254,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 10
+  },
+  {
+   "key": "mm.like_like",
+   "name": "Like Like",
+   "actorId": 108,
+   "params": 3,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 128
+  },
+  {
+   "key": "mm.mad_scrub",
+   "name": "Mad Scrub",
+   "actorId": 59,
+   "params": -255,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.mini_baba",
+   "name": "Mini Baba",
+   "actorId": 102,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 2
+  },
+  {
+   "key": "mm.nejiron",
+   "name": "Nejiron",
+   "actorId": 341,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.octorok",
+   "name": "Octorok",
+   "actorId": 8,
+   "params": -256,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 16
+  },
+  {
+   "key": "mm.peahat_larva",
+   "name": "Peahat Larva",
+   "actorId": 20,
+   "params": 1,
+   "spawnHeight": 100,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.peahat",
+   "name": "Peahat",
+   "actorId": 20,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.poe",
+   "name": "Poe",
+   "actorId": 499,
+   "params": 255,
+   "spawnHeight": 50,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.red_bubble",
+   "name": "Red Bubble",
+   "actorId": 60,
+   "params": 0,
+   "spawnHeight": 50,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.redead",
+   "name": "Redead",
+   "actorId": 76,
+   "params": 32513,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.shellblade",
+   "name": "Shellblade",
+   "actorId": 100,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 144
+  },
+  {
+   "key": "mm.skullfish",
+   "name": "Skullfish",
+   "actorId": 384,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 144
+  },
+  {
+   "key": "mm.skulltula",
+   "name": "Skulltula",
+   "actorId": 36,
+   "params": 63,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 64
+  },
+  {
+   "key": "mm.snapper",
+   "name": "Snapper",
+   "actorId": 442,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 2
+  },
+  {
+   "key": "mm.stalchild",
+   "name": "Stalchild",
+   "actorId": 237,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  },
+  {
+   "key": "mm.tektite",
+   "name": "Tektite",
+   "actorId": 18,
+   "params": -2,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 65536
+  },
+  {
+   "key": "mm.wallmaster",
+   "name": "Wallmaster",
+   "actorId": 10,
+   "params": 1,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 2
+  },
+  {
+   "key": "mm.wart",
+   "name": "Wart",
+   "actorId": 300,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 10
+  },
+  {
+   "key": "mm.wizrobe",
+   "name": "Wizrobe",
+   "actorId": 349,
+   "params": 639,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 12
+  },
+  {
+   "key": "mm.wolfos",
+   "name": "Wolfos",
+   "actorId": 236,
+   "params": 0,
+   "spawnHeight": 0,
+   "rotX": 0,
+   "rotZ": 0,
+   "flags": 0
+  }
+ ],
+ "superseded": []
+}

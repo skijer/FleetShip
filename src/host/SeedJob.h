@@ -19,7 +19,6 @@ class SeedJob {
     std::optional<int> Poll();
     void Cancel();
     bool Running() const;
-    static void LaunchDetached(const std::filesystem::path& executable, const std::vector<std::string>& arguments);
 
   private:
     void* mProcess = nullptr;

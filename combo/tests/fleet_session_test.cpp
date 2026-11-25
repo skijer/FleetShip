@@ -108,6 +108,52 @@ void VerifyGoalReached(const std::filesystem::path& folder) {
     Require(either.ReportGoalReached("mm"), "either: one cleared game did not roll the credits");
 }
 
+// The in-process reset: the same object closes, keeps only committed progress, and opens again.
+void VerifyCloseAndReopen(const std::filesystem::path& folder) {
+    nlohmann::json seed = {
+        { "fileType", "ComboShipRandomizer" },
+        { "startingGame", "OOT" },
+        { "oot",
+          { { "settings", nlohmann::json::object() },
+            { "placements", { { "Saved Chest", "Hookshot" }, { "Unsaved Chest", "Hookshot" } } } } },
+        { "mm", { { "settings", nlohmann::json::object() }, { "placements", nlohmann::json::object() } } },
+        { "foreign", nlohmann::json::array({ { { "checkGame", "oot" },
+                                               { "checkName", "Saved Chest" },
+                                               { "itemGame", "mm" },
+                                               { "itemName", "Hookshot" } },
+                                             { { "checkGame", "oot" },
+                                               { "checkName", "Unsaved Chest" },
+                                               { "itemGame", "mm" },
+                                               { "itemName", "Bow" } } }) }
+    };
+    const auto seedPath = folder / "close-seed.json";
+    std::ofstream(seedPath) << seed;
+    const auto saveFile = folder / "close" / "slot0" / "oot" / "Save" / "file1.sav";
+    ComboSession session;
+    session.Open(seedPath, folder / "close", 0);
+    Require(session.ReportObtained("oot", "Saved Chest"), "close: saved pickup rejected");
+    std::ofstream(saveFile) << "saved";
+    session.RequestCommit();
+    session.Close();
+    Require(!session.Enabled() && session.Description().empty(), "close: the session stayed open");
+    Require(std::filesystem::exists(saveFile), "close: a commit requested before the reset was lost");
+    session.Close();
+    session.Open(seedPath, folder / "close", 0);
+    Require(session.Enabled(), "close: the session did not open again");
+    Require(nlohmann::json::parse(session.Deliveries("mm")).size() == 1, "close: committed progress was lost");
+    Require(session.ReportObtained("oot", "Unsaved Chest"), "close: unsaved pickup rejected");
+    std::ofstream(saveFile) << "unsaved";
+    session.Close();
+    std::string kept;
+    std::ifstream(saveFile) >> kept;
+    Require(kept == "saved", "close: the file select would show progress the player did not save");
+    session.Open(seedPath, folder / "close", 0);
+    Require(nlohmann::json::parse(session.Deliveries("mm")).size() == 1, "close: unsaved progress survived");
+    session.Close();
+    session.Open(seedPath, folder / "close", 1);
+    Require(nlohmann::json::parse(session.Deliveries("mm")).empty(), "close: another slot inherited a pickup");
+}
+
 } // namespace
 
 int main() {
@@ -117,6 +163,7 @@ int main() {
     try {
         VerifyPortalRoutes();
         VerifyGoalReached(folder);
+        VerifyCloseAndReopen(folder);
         nlohmann::json seed = {
             { "fileType", "ComboShipRandomizer" },
             { "startingGame", "MM" },

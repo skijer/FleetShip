@@ -158,33 +158,3 @@ void SeedJob::Cancel() {
     mPid = -1;
 #endif
 }
-
-void SeedJob::LaunchDetached(const std::filesystem::path& executable, const std::vector<std::string>& arguments) {
-#ifdef _WIN32
-    std::wstring command = Quote(executable.wstring());
-    for (const auto& argument : arguments) {
-        command += L" " + Quote(std::filesystem::path(argument).wstring());
-    }
-    STARTUPINFOW startup = {};
-    startup.cb = sizeof(startup);
-    PROCESS_INFORMATION process = {};
-    if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
-                        executable.parent_path().c_str(), &startup, &process)) {
-        throw std::runtime_error("Could not open Fleet's file selector.");
-    }
-    CloseHandle(process.hThread);
-    CloseHandle(process.hProcess);
-#else
-    std::vector<std::string> owned = { executable.string() };
-    owned.insert(owned.end(), arguments.begin(), arguments.end());
-    std::vector<char*> argv;
-    for (auto& argument : owned) {
-        argv.push_back(argument.data());
-    }
-    argv.push_back(nullptr);
-    pid_t pid;
-    if (posix_spawn(&pid, executable.c_str(), nullptr, nullptr, argv.data(), environ) != 0) {
-        throw std::runtime_error("Could not open Fleet's file selector.");
-    }
-#endif
-}

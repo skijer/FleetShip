@@ -50,6 +50,53 @@ class LoadingOverlay final : public Ship::GuiWindow {
     std::shared_ptr<std::string> mText;
 };
 
+// The item review's banner along the top, clear of the get-item textbox at the bottom.
+class ReviewOverlay final : public Ship::GuiWindow {
+  public:
+    explicit ReviewOverlay(std::shared_ptr<FleetGui::ReviewPrompt> prompt)
+        : GuiWindow("", false, "~Fleet Review"), mPrompt(std::move(prompt)) {
+    }
+    void InitElement() override {
+    }
+    void UpdateElement() override {
+    }
+    void DrawElement() override {
+    }
+    void Draw() override {
+        if (!IsVisible()) {
+            return;
+        }
+        constexpr float kIconSize = 64.0f;
+        constexpr float kMargin = 12.0f;
+        ImGui::SetCurrentContext(Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetImGuiContext());
+        const auto* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + viewport->Size.x / 2, viewport->Pos.y + kMargin),
+                                ImGuiCond_Always, ImVec2(0.5f, 0.0f));
+        ImGui::SetNextWindowBgAlpha(0.8f);
+        ImGui::Begin("Fleet Review", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoFocusOnAppearing);
+        FleetItemIcon icon = {};
+        if (mPrompt->findIcon && mPrompt->findIcon(mPrompt->game, mPrompt->item, icon)) {
+            ImGui::ImageWithBg(reinterpret_cast<ImTextureID>(reinterpret_cast<uintptr_t>(icon.texture)),
+                               ImVec2(kIconSize, kIconSize), ImVec2(icon.uv0[0], icon.uv0[1]),
+                               ImVec2(icon.uv1[0], icon.uv1[1]), ImVec4(0, 0, 0, 0),
+                               ImVec4(icon.tint[0], icon.tint[1], icon.tint[2], icon.tint[3]));
+        } else {
+            ImGui::Dummy(ImVec2(kIconSize, kIconSize));
+        }
+        ImGui::SameLine();
+        ImGui::SetWindowFontScale(1.4f);
+        ImGui::TextUnformatted(mPrompt->text.c_str());
+        ImGui::SetWindowFontScale(1.0f);
+        ImGui::End();
+    }
+
+  private:
+    std::shared_ptr<FleetGui::ReviewPrompt> mPrompt;
+};
+
 class OwnedWindow final : public Ship::GuiWindow {
   public:
     OwnedWindow(std::string owner, std::shared_ptr<Ship::GuiWindow> window)
@@ -341,7 +388,7 @@ const std::vector<RowRoute>& RowRoutes() {
           .section = "Randomizer",
           .sidebar = "Dungeons",
           .cvarPrefix = "gRandoSettings.ShuffleBossSouls",
-          .places = { { "Logic & Access", "Souls" } } },
+          .places = { { "Logic & Access", "Souls" }, { "Enemies", "Options" } } },
         { .game = "oot",
           .section = "Randomizer",
           .sidebar = "Dungeons",
@@ -366,7 +413,7 @@ const std::vector<RowRoute>& RowRoutes() {
           .section = "Randomizer",
           .sidebar = "Shuffles",
           .cvarPrefix = "gRandoSettings.ShuffleEnemySouls",
-          .places = { { "Logic & Access", "Souls" } } },
+          .places = { { "Logic & Access", "Souls" }, { "Enemies", "Options" } } },
         { .game = "oot",
           .section = "Randomizer",
           .sidebar = "Shuffles",
@@ -377,6 +424,25 @@ const std::vector<RowRoute>& RowRoutes() {
           .sidebar = "Shuffles",
           .group = "Shuffle Shops & Merchants",
           .places = { { "Shuffles", "Shops & Merchants" } } },
+        { .game = "oot",
+          .section = "Randomizer",
+          .sidebar = "Shuffles",
+          .cvarPrefix = "gRandoSettings.EnemyRandomizer",
+          .places = { { "Enemies", "Options" } } },
+        { .game = "oot",
+          .section = "Randomizer",
+          .sidebar = "Shuffles",
+          .cvarPrefix = "gRandoSettings.EnemySoulBehaviour",
+          .places = { { "Enemies", "Options" } } },
+        { .game = "oot",
+          .section = "Randomizer",
+          .sidebar = "Enemy Pools",
+          .places = { { "Enemies", "Ocarina of Time" } } },
+        { .game = "mm",
+          .section = "Rando",
+          .sidebar = "Enemies",
+          .places = { { "Enemies", "Majora's Mask" } },
+          .names = { "Enemy Pool", "Miniboss Pool", "Soul Pool" } },
         { .game = "oot",
           .section = "Randomizer",
           .sidebar = "Shuffles",
@@ -560,6 +626,10 @@ const std::vector<RandomizerPageLayout>& RandomizerPages() {
           { { "Cross-Game Entrances", &FleetSaveMenu::DrawCrossEntranceRows, 11 },
             { "Swords & Shields", &FleetSaveMenu::DrawStartingEquipment, 3 } } },
         { "Item Pool", &FleetSaveMenu::DrawItemPoolPage, { "Item Pool", "Additional Items", "Traps" } },
+        { "Enemies",
+          nullptr,
+          { "Options", "Ocarina of Time", "Majora's Mask" },
+          { { "Options", &FleetSaveMenu::DrawBossEntranceRow, 1 } } },
         { "Plandomizer", &FleetSaveMenu::DrawPlandomizerPage, {} },
         { "Hints", nullptr, { "Hints", "Static Hints" } },
         { "Tricks/Glitches", nullptr, { "" } },
@@ -1477,6 +1547,8 @@ FleetGui::FleetGui() : mFleetMenu(std::make_shared<Menu>()) {
     mFleetMenu->loading = mLoadingText;
     mLoadingOverlay = std::make_shared<LoadingOverlay>(mLoadingText);
     AddGuiWindow(mLoadingOverlay);
+    mReviewOverlay = std::make_shared<ReviewOverlay>(mReviewPrompt);
+    AddGuiWindow(mReviewOverlay);
     mDefaults = mGuiWindows;
 }
 
@@ -1507,11 +1579,22 @@ void FleetGui::SetLoading(const std::string& text) {
         mLoadingOverlay->Show();
     }
 }
+void FleetGui::SetReviewPrompt(const std::string& game, const std::string& item, const std::string& text) {
+    mReviewPrompt->game = game;
+    mReviewPrompt->item = item;
+    mReviewPrompt->text = text;
+    if (text.empty()) {
+        mReviewOverlay->Hide();
+    } else {
+        mReviewOverlay->Show();
+    }
+}
 void FleetGui::SetGenerator(std::shared_ptr<FleetSaveMenu> generator) {
     mFleetMenu->generator = std::move(generator);
 }
 
 void FleetGui::SetItemTools(ItemTools tools) {
+    mReviewPrompt->findIcon = tools.findIcon;
     mFleetMenu->itemTools = std::move(tools);
 }
 void FleetGui::OpenRandomizer() {

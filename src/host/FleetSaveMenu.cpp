@@ -703,6 +703,47 @@ std::string PassageArgument(const PassageChoices& chosen) {
     }
     return keys;
 }
+
+constexpr int kGerudoFortressFree = 2;
+
+bool IsOotOptionOff(const char* cvar) {
+    const auto oot = GameVariables("oot");
+    return oot && oot->GetInteger(cvar, 0) == 0;
+}
+
+bool StartsWithUnshuffledGerudoCard() {
+    const auto oot = GameVariables("oot");
+    return oot && oot->GetInteger("gRandoSettings.ShuffleGerudoToken", 0) == 0 &&
+           oot->GetInteger("gRandoSettings.FortressCarpenters", 0) == kGerudoFortressFree;
+}
+
+// How SoH hands out an OoT item that its options keep out of the pool.
+std::string OotUnshuffledNote(const std::string& displayName) {
+    const std::string name = Lowercase(displayName);
+    if (name == "gerudo membership card" && IsOotOptionOff("gRandoSettings.ShuffleGerudoToken")) {
+        return StartsWithUnshuffledGerudoCard()
+                   ? "Link starts with the Gerudo Membership Card: Gerudo Fortress is Free and the card is not "
+                     "shuffled."
+                   : "Gerudo Membership Card not shuffled: freeing the carpenters gives it.";
+    }
+    if (name == "progressive stick capacity" && IsOotOptionOff("gRandoSettings.ShuffleDekuStickBag")) {
+        return "Deku Stick Bag not shuffled: there is no bag to find, the first Deku Sticks give room for 10.";
+    }
+    if (name == "progressive nut capacity" && IsOotOptionOff("gRandoSettings.ShuffleDekuNutBag")) {
+        return "Deku Nut Bag not shuffled: there is no bag to find, the first Deku Nuts give room for 20.";
+    }
+    return {};
+}
+
+void DrawOotUnshuffledNotes() {
+    static constexpr const char* kNotedItems[] = { "Gerudo Membership Card", "Progressive Stick Capacity",
+                                                   "Progressive Nut Capacity" };
+    for (const char* item : kNotedItems) {
+        if (const std::string note = OotUnshuffledNote(item); !note.empty()) {
+            ImGui::BulletText("%s", note.c_str());
+        }
+    }
+}
 } // namespace
 
 struct PlacementChoice {
@@ -1811,6 +1852,17 @@ void FleetSaveMenu::Complete() {
     StopWorker();
 }
 
+void FleetSaveMenu::Reopen() {
+    mReady.reset();
+    mSlot = -1;
+    mStartRequested = false;
+    mActive = false;
+    mNativeMode = false;
+    mNativeRequested = false;
+    mPrepared = false;
+    mEnabled = true;
+}
+
 void FleetSaveMenu::Draw() {
     if (mActive) {
         if (mReady && mStartRequested) {
@@ -1868,6 +1920,17 @@ void FleetSaveMenu::DrawGeneralPage() {
 
 void FleetSaveMenu::DrawCrossEntranceRows() {
     DrawCrossEntrances(ComboRando::ComboMenu_ThemeColor());
+    KeepGeneralChoices();
+}
+
+void FleetSaveMenu::DrawBossEntranceRow() {
+    const auto boss = std::find_if(kEntranceRows.begin(), kEntranceRows.end(), [](const EntranceRow& row) {
+        return std::string_view(row.cvar != nullptr ? row.cvar : "") == "gRandoSettings.ShuffleBossEntrances";
+    });
+    if (boss == kEntranceRows.end()) {
+        return;
+    }
+    DrawEntranceRow(*boss);
     KeepGeneralChoices();
 }
 
@@ -2245,6 +2308,7 @@ void FleetSaveMenu::DrawItemPoolPage() {
     KeepGeneralChoices();
     DrawPoolSummary(theme);
     DrawStartingOptions();
+    DrawOotUnshuffledNotes();
     DrawChosenStartingItems(theme);
     DrawUnshuffledStartingItems();
 }
@@ -2343,6 +2407,11 @@ void FleetSaveMenu::DrawItemTooltip(const std::string& game, const std::string& 
         for (size_t index = 0; index < tiers->second.size(); index++) {
             ImGui::Text("%zu. %s", index + 1, tiers->second[index].c_str());
         }
+    }
+    if (const std::string note = game == "oot" ? OotUnshuffledNote(DisplayName(game, name)) : std::string{};
+        !note.empty()) {
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(1.0f, 0.8f, 0.3f, 1.0f), "%s", note.c_str());
     }
     const auto description = mDescriptions.find({ game, name });
     if (description != mDescriptions.end() && !description->second.empty()) {
@@ -2819,9 +2888,13 @@ void FleetSaveMenu::DrawUnshuffledStartingItems() {
     for (const char* game : { "oot", "mm" }) {
         for (const auto& item : mStarting[game]) {
             const std::string name = item.value("name", std::string{});
-            if (!IsCoveredByPool(game, name) && item.value("count", 0) == 0 && MatchesItemFilter(filter, game, name)) {
-                cells.push_back({ game, name, "", true, false, false });
+            if (IsCoveredByPool(game, name) || item.value("count", 0) != 0 || !MatchesItemFilter(filter, game, name)) {
+                continue;
             }
+            const bool startsAnyway = std::string(game) == "oot" &&
+                                      Lowercase(DisplayName(game, name)) == "gerudo membership card" &&
+                                      StartsWithUnshuffledGerudoCard();
+            cells.push_back({ game, name, startsAnyway ? "Start" : "", !startsAnyway, false, false });
         }
     }
     if (cells.empty()) {

@@ -1,5 +1,7 @@
 #include "GameInstall.h"
 
+#include <cctype>
+#include <iomanip>
 #include <array>
 #include <algorithm>
 #include <cstdlib>
@@ -20,7 +22,9 @@
 #include <ship/window/FileDropMgr.h>
 #include <ship/GameRegistry.h>
 #include <libultraship/controller/controldeck/ControlDeck.h>
+#include <ship/controller/controldevice/controller/Controller.h>
 #include <ship/debug/Console.h>
+#include <ship/debug/CrashHandler.h>
 
 #include "GameFiber.h"
 #include "GameModule.h"
@@ -30,8 +34,12 @@
 #include "CrossWalk.h"
 #include "SongWalk.h"
 #include "DropWalk.h"
+#include "EnemyWalk.h"
 #include "FrameCapture.h"
 #include "ItemRain.h"
+#include "AssetCatalogue.h"
+#include "PhotoWalk.h"
+#include "ItemReview.h"
 #include "ShareWalk.h"
 #include "ItemWalk.h"
 #include "TransitionWalk.h"
@@ -44,6 +52,10 @@ int FleetSeedWorker(int argc, char* argv[]);
 
 #ifdef _WIN32
 #include <Windows.h>
+#include <audiopolicy.h>
+#include <mmdeviceapi.h>
+#include <werapi.h>
+#pragma comment(lib, "wer.lib")
 #endif
 
 #define BTN_CUSTOM_MODIFIER1 0x0040
@@ -61,7 +73,6 @@ namespace {
 
 enum GameIndex { Oot, Mm, GameCount };
 GameIndex IndexOf(const char* game);
-void OpenFileSelector(const std::string& game);
 void EndProcess(int status);
 
 struct HostedGame {
@@ -88,6 +99,7 @@ struct Options {
     bool smokePortals = false;
     int smokeNew = -1;
     bool smokeResume = false;
+    int smokeResets = 0;
     bool smokeCycle = false;
     bool smokeItemTest = false;
     std::optional<GameIndex> itemWalkGame;
@@ -97,6 +109,8 @@ struct Options {
     std::string itemWalkSkip;
     bool itemWalkReverse = false;
     std::optional<GameIndex> dropWalkGame;
+    std::optional<GameIndex> enemyWalkGame;
+    EnemyWalk::Settings enemyWalk;
     std::optional<GameIndex> crossWalkGame;
     int crossWalkRounds = 2;
     bool songWalk = false;
@@ -104,6 +118,9 @@ struct Options {
     int itemRainWaves = 10;
     double itemRainSaveBudgetMs = 0.0;
     std::string shareWalkGame;
+    bool assetCatalogue = false;
+    std::string assetReview;
+    std::string assetReviewOnly;
     std::string shareWalkBaseline;
     bool transitionWalk = false;
     std::string transitionWalkOnly;
@@ -121,6 +138,8 @@ std::optional<GameIndex> sPendingSwitch;
 int sSmokeFrames = 0;
 std::array<int, GameCount> sFramesRun = {};
 int sSmokeSwitchesDone = 0;
+int sSmokeResetsLeft = 0;
+int sSmokeResetsDone = 0;
 ComboSession sSession;
 std::shared_ptr<FleetSaveMenu> sSaveMenu;
 std::shared_ptr<FleetGui> sFleetGui;
@@ -144,6 +163,9 @@ bool sItemWalkReverse = false;
 std::unique_ptr<ItemWalk> sItemWalk;
 std::optional<GameIndex> sDropWalkGame;
 std::unique_ptr<DropWalk> sDropWalk;
+std::optional<GameIndex> sEnemyWalkGame;
+EnemyWalk::Settings sEnemyWalkSettings;
+std::unique_ptr<EnemyWalk> sEnemyWalk;
 std::optional<GameIndex> sCrossWalkGame;
 int sCrossWalkRounds = 0;
 std::unique_ptr<CrossWalk> sCrossWalk;
@@ -154,6 +176,11 @@ int sItemRainWaves = 0;
 double sItemRainSaveBudgetMs = 0.0;
 std::unique_ptr<ItemRain> sItemRain;
 std::string sShareWalkGame;
+bool sAssetCatalogueRequested = false;
+std::string sAssetReview;
+std::string sAssetReviewOnly;
+std::unique_ptr<PhotoWalk> sPhotoWalk;
+std::unique_ptr<ItemReview> sItemReview;
 std::string sShareWalkBaseline;
 std::unique_ptr<ShareWalk> sShareWalk;
 bool sTransitionWalkRequested = false;
@@ -165,6 +192,7 @@ bool sSmokeNativeGeneration = false;
 bool sNativeGenerationTestStarted = false;
 bool sNativeGenerationReadyObserved = false;
 bool sSmokePages = false;
+bool sQuietCrashes = false;
 bool sSmokePagesDone = false;
 bool sSmokeSettingsDone = false;
 bool sMenuExported = false;
@@ -397,9 +425,33 @@ void CommitSave() {
     sSession.RequestCommit();
 }
 
+void RequestFromStartedGames(const char* op) {
+    for (const HostedGame& game : sGames) {
+        if (game.module != nullptr && game.fiber != nullptr) {
+            game.module->Request(op);
+        }
+    }
+}
+
+// The games and Fleet stay loaded: both games leave the session for their title, then their file select.
+void CloseSession() {
+    RequestFromStartedGames("EndSession");
+    sSession.Close();
+    RequestFromStartedGames("ReloadSaveFiles");
+    sOpeningSession = false;
+    sCreatedStartPending = false;
+    sPendingSwitch.reset();
+    if (sSaveMenu != nullptr) {
+        sSaveMenu->Reopen();
+    }
+    sFleetGui->GetMenu()->Hide();
+    sFleetGui->SetLoading("");
+    std::cout << "[fleet] session closed; back to the file select" << std::endl;
+}
+
 void ResetActiveGame() {
     if (sSession.Enabled()) {
-        OpenFileSelector(sGames[sActive].module->Name());
+        CloseSession();
         return;
     }
     const auto& game = sGames[sActive].module;
@@ -462,26 +514,7 @@ void RequestSwitch(const char* fromGame, const FleetDestination* destination) {
 }
 
 void EndProcess(int status);
-void SaveHostSettings();
 std::filesystem::path InstallFolder();
-
-void OpenFileSelector(const std::string& game) {
-    if (sSession.Enabled()) {
-        char* base = SDL_GetBasePath();
-        const std::filesystem::path directory = base != nullptr ? base : ".";
-        SDL_free(base);
-        std::vector<std::string> args = { "--internal-mode", std::to_string(sMode), "--internal-start", game };
-        if (sSaveMenu != nullptr) {
-            args.insert(args.end(), { "--internal-saves", sSaveMenu->Root().string() });
-        }
-        SaveHostSettings();
-        SeedJob::LaunchDetached(directory / kFleetExecutable, args);
-        EndProcess(0);
-        return;
-    }
-    const FleetDestination destination = { .game = sGames[IndexOf(game.c_str())].module->Name() };
-    RequestSwitch(sGames[sActive].module->Name(), &destination);
-}
 
 void Activate(GameIndex target) {
     HostedGame& game = sGames[target];
@@ -845,6 +878,234 @@ void TravelTo(const std::string& from, const std::string& to) {
     RequestSwitch(from.c_str(), &destination);
 }
 
+// Assumes the caller holds the game's scope, so the resource manager is that game's.
+std::shared_ptr<Ship::ResourceManager> ScopedResources() {
+    return Ship::Context::GetRawInstance()->GetResourceManager();
+}
+
+nlohmann::json DescribeIconImage(const std::string& game, const std::string& path, const std::filesystem::path& folder) {
+    if (path.empty()) {
+        return { { "problem", "no icon resource" } };
+    }
+    Ship::GameScope scope(game);
+    const auto texture = std::dynamic_pointer_cast<Fast::Texture>(ScopedResources()->LoadResource(path, true));
+    if (texture == nullptr) {
+        return { { "problem", "icon resource does not load" } };
+    }
+    const auto image = AssetCatalogue::DecodeTexture(*texture);
+    if (!image) {
+        return { { "problem", "icon format not decoded" }, { "format", static_cast<int>(texture->Type) } };
+    }
+    const std::string file = "icons/" + game + "/" + AssetCatalogue::FileNameOf(path) + ".png";
+    AssetCatalogue::WritePng(folder / file, *image);
+    const uint64_t pixels = AssetCatalogue::MixBytes(AssetCatalogue::kFnvOffset, image->rgba.data(), image->rgba.size());
+    return { { "file", file },
+             { "width", image->width },
+             { "height", image->height },
+             { "format", static_cast<int>(texture->Type) },
+             { "hash", AssetCatalogue::HexOf(pixels) } };
+}
+
+nlohmann::json DescribeDisplayList(const std::string& game, const std::string& item) {
+    constexpr float kIdentity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+    static std::vector<uint64_t> opa(1 << 16);
+    static std::vector<uint64_t> xlu(1 << 16);
+    FleetItemDraw request = { .owner = game.c_str(),
+                              .item = item.c_str(),
+                              .opaHead = opa.data(),
+                              .opaTail = opa.data() + opa.size(),
+                              .xluHead = xlu.data(),
+                              .xluTail = xlu.data() + xlu.size() };
+    std::copy(std::begin(kIdentity), std::end(kIdentity), request.model);
+    std::copy(std::begin(kIdentity), std::end(kIdentity), request.billboard);
+    if (!DrawForeignItem(&request)) {
+        return { { "drawn", false } };
+    }
+    Ship::GameScope scope(game);
+    AssetCatalogue::DlWalker walker(ScopedResources());
+    using Command = AssetCatalogue::Command;
+    walker.Walk(reinterpret_cast<const Command*>(opa.data()), static_cast<const Command*>(request.opaHead));
+    const auto summary = walker.Walk(reinterpret_cast<const Command*>(xlu.data()),
+                                     static_cast<const Command*>(request.xluHead));
+    return { { "drawn", summary.commands > 0 },
+             { "fingerprint", AssetCatalogue::HexOf(summary.fingerprint) },
+             { "commands", summary.commands },
+             { "resources", summary.resources },
+             { "issues", summary.issues } };
+}
+
+// Every item of both games: the icon the launcher and the textbox show, and the display list Fleet draws.
+std::string WriteAssetCatalogue() {
+    const auto folder = InstallFolder() / "logs" / "asset-catalogue";
+    std::filesystem::remove_all(folder / "icons");
+    nlohmann::json rows = nlohmann::json::array();
+    for (const auto& hosted : sGames) {
+        const std::string game = hosted.module->Name();
+        nlohmann::json names = nlohmann::json::array();
+        const auto items = ListItemsOf(hosted);
+        for (const auto& [name, label] : items) {
+            names.push_back(name);
+        }
+        const nlohmann::json assets =
+            RequestTest(game, "TestItemAssets", { { "items", names } }).value("assets", nlohmann::json::object());
+        for (const auto& [name, label] : items) {
+            std::cout << "[fleet] catalogue " << game << ":" << name << std::endl;
+            const nlohmann::json icon = assets.value(name, nlohmann::json());
+            const std::string iconPath = icon.is_object() ? icon.value("iconPath", std::string{}) : std::string{};
+            rows.push_back({ { "game", game },
+                             { "item", name },
+                             { "label", label },
+                             { "icon", icon },
+                             { "iconImage", DescribeIconImage(game, iconPath, folder) },
+                             { "displayList", DescribeDisplayList(game, name) } });
+        }
+    }
+    std::ofstream(folder / "catalogue.json") << rows.dump(1);
+    return std::to_string(rows.size()) + " items into " + (folder / "catalogue.json").string();
+}
+
+// Read beside the game, which keeps its input: A also closes the get-item textbox.
+ItemReview::Choice ReadReviewChoice() {
+    static uint16_t held = 0;
+    const auto controller = Ship::Context::GetRawInstance()->GetControlDeck()->GetControllerByPort(0);
+    if (controller == nullptr) {
+        return ItemReview::Choice::None;
+    }
+    OSContPad pad = {};
+    controller->ReadToPad(&pad);
+    const uint16_t pressed = pad.button & ~held;
+    held = pad.button;
+    if (pressed & BTN_B) {
+        return ItemReview::Choice::Reject;
+    }
+    if (pressed & BTN_Z) {
+        return ItemReview::Choice::Back;
+    }
+    return (pressed & BTN_A) ? ItemReview::Choice::Keep : ItemReview::Choice::None;
+}
+
+std::string ToLowerCase(std::string text) {
+    std::transform(text.begin(), text.end(), text.begin(), [](unsigned char c) { return std::tolower(c); });
+    return text;
+}
+
+// --asset-review-only: any of its "|"-separated words in the item's key or label; it narrows photos too.
+bool MatchesItemFilter(const std::string& key, const std::string& label) {
+    if (sAssetReviewOnly.empty()) {
+        return true;
+    }
+    const std::string text = ToLowerCase(key + " " + label);
+    std::stringstream words(ToLowerCase(sAssetReviewOnly));
+    for (std::string word; std::getline(words, word, '|');) {
+        if (!word.empty() && text.find(word) != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string ReviewedVerdict(const nlohmann::json& review, const std::string& key) {
+    return review.value(key, nlohmann::json::object()).value("verdict", std::string{});
+}
+
+// "pending" skips what was judged correct and "failed" shows only what was judged wrong, so a review picks up
+// where it stopped; an item still on screen when the game went down is judged wrong for it.
+bool IsSkippedInReview(const nlohmann::json& review, const std::string& key) {
+    const std::string verdict = ReviewedVerdict(review, key);
+    return (sAssetReview == "pending" && verdict == "correct") || (sAssetReview == "failed" && verdict != "wrong");
+}
+
+// Only souls cross over in the review: the other game's enemies and bosses are what each game must draw.
+bool IsSoulItem(const std::string& name, const std::string& label) {
+    return ToLowerCase(name + " " + label).find("soul") != std::string::npos;
+}
+
+// The game showing the items owns the first ones, then the others in hosting order.
+std::vector<const HostedGame*> OwnersInReviewOrder(const HostedGame& shown) {
+    std::vector<const HostedGame*> owners = { &shown };
+    for (const auto& other : sGames) {
+        if (&other != &shown) {
+            owners.push_back(&other);
+        }
+    }
+    return owners;
+}
+
+std::unique_ptr<ItemReview> CreateItemReview() {
+    ItemReview::Review review = { InstallFolder() / "logs" / "asset-catalogue" / "ingame-review.json" };
+    if (std::filesystem::exists(review.file)) {
+        const nlohmann::json saved = nlohmann::json::parse(std::ifstream(review.file), nullptr, false);
+        review.items = saved.value("items", review.items);
+        const std::string crashed = saved.value("showing", std::string{});
+        if (!crashed.empty()) {
+            review.items[crashed] = { { "verdict", "wrong" }, { "note", "crashed the game" } };
+            std::cout << "[fleet] item review: " << crashed << " crashed the game last time" << std::endl;
+        }
+    }
+    // Each game shows its own items first, then every other game's as foreign get-items.
+    std::vector<ItemReview::GameItems> items;
+    for (const auto& shown : sGames) {
+        const std::string game = shown.module->Name();
+        std::vector<ItemReview::ReviewItem> entries;
+        for (const HostedGame* owner : OwnersInReviewOrder(shown)) {
+            for (const auto& [name, label] : ListItemsOf(*owner)) {
+                const ItemReview::ReviewItem entry = { owner->module->Name(), name };
+                const std::string key = ItemReview::KeyOf(game, entry);
+                if (owner != &shown && !IsSoulItem(name, label)) {
+                    continue;
+                }
+                if (!MatchesItemFilter(key, label) || IsSkippedInReview(review.items, key)) {
+                    continue;
+                }
+                review.labels[key] = label;
+                entries.push_back(entry);
+            }
+        }
+        if (!entries.empty()) {
+            items.emplace_back(game, std::move(entries));
+        }
+    }
+    return std::make_unique<ItemReview>(
+        std::move(items), std::move(review),
+        ItemReview::Host{ .request = RequestTest,
+                          .travel = TravelTo,
+                          .readChoice = ReadReviewChoice,
+                          .prompt = [](const std::string& game, const std::string& item,
+                                       const std::string& text) { sFleetGui->SetReviewPrompt(game, item, text); } });
+}
+
+// Turbo needs vsync off and photos need the low-resolution framebuffer; both go back when the walk ends.
+std::unique_ptr<PhotoWalk> CreatePhotoWalk() {
+    constexpr int kLowestResolution = 3;
+    const auto hostVariables = Ship::Context::GetRawInstance()->GetConsoleVariables();
+    const int vsync = hostVariables->GetInteger(CVAR_VSYNC_ENABLED, 1);
+    hostVariables->SetInteger(CVAR_VSYNC_ENABLED, 0);
+    std::vector<std::pair<std::string, int>> lowResolution;
+    std::vector<PhotoWalk::GameItems> items;
+    for (const auto& hosted : sGames) {
+        const std::string game = hosted.module->Name();
+        const auto variables = Ship::GameRegistry::Get(game)->ConsoleVariables;
+        lowResolution.emplace_back(game, variables->GetInteger(CVAR_LOW_RES_MODE, 0));
+        variables->SetInteger(CVAR_LOW_RES_MODE, kLowestResolution);
+        std::vector<std::string> names;
+        for (const auto& [name, label] : ListItemsOf(hosted)) {
+            if (MatchesItemFilter(game + ":" + name, label)) {
+                names.push_back(name);
+            }
+        }
+        items.emplace_back(game, std::move(names));
+    }
+    const auto restore = [hostVariables, vsync, lowResolution] {
+        hostVariables->SetInteger(CVAR_VSYNC_ENABLED, vsync);
+        for (const auto& [game, value] : lowResolution) {
+            Ship::GameRegistry::Get(game)->ConsoleVariables->SetInteger(CVAR_LOW_RES_MODE, value);
+        }
+    };
+    return std::make_unique<PhotoWalk>(
+        std::move(items), InstallFolder() / "logs" / "asset-catalogue",
+        PhotoWalk::Host{ .request = RequestTest, .travel = TravelTo, .finish = restore });
+}
+
 std::filesystem::path CreateTestLog(const std::string& name) {
     const auto log = InstallFolder() / "logs" / name;
     std::filesystem::create_directories(log.parent_path());
@@ -896,6 +1157,30 @@ std::unique_ptr<TransitionWalk> CreateTransitionWalk() {
                                             TransitionWalk::Host{ .request = RequestTest,
                                                                   .travel = TravelTo,
                                                                   .capture = FrameCapture::Save });
+}
+
+// Captures need the low-resolution framebuffer; the walk puts both forced settings back when it ends.
+std::unique_ptr<EnemyWalk> CreateEnemyWalk(GameIndex watched) {
+    constexpr int kLowestResolution = 3;
+    const std::string game = sGames[watched].module->Name();
+    const auto variables = Ship::GameRegistry::Get(game)->ConsoleVariables;
+    const char* collisionViewer = watched == Oot ? "gDeveloperTools.ColViewer.Enabled" : "gCollisionViewer.Enabled";
+    EnemyWalk::Host host = {
+        .game = game,
+        .gameDirectory = watched == Oot ? sOotDirectory : sMmDirectory,
+        .settings = variables,
+        .forcedSettings = { { collisionViewer, 0 }, { CVAR_LOW_RES_MODE, kLowestResolution } },
+        .saveSettings =
+            [game, variables] {
+                Ship::GameScope scope(game);
+                variables->Save();
+            },
+        .request = RequestTest,
+        .travel = TravelTo,
+        .capture = FrameCapture::Save,
+    };
+    return std::make_unique<EnemyWalk>(sEnemyWalkSettings, EnemyWalk::LogPathOf(InstallFolder(), game),
+                                       std::move(host));
 }
 
 template <class Walk> void AdvanceTestWalk(Walk& walk, const char* game, const char* name) {
@@ -965,6 +1250,33 @@ void RequestSmokeSwitch(GameIndex source) {
     RequestSwitch(sGames[source].module->Name(), &destination);
 }
 
+// The reset a player picks from the menu, then the same file chosen again from Fleet's file select.
+void ResetSessionForSmoke() {
+    const int slot = nlohmann::json::parse(sSession.Description()).at("slot");
+    ResetActiveGame();
+    if (sSession.Enabled() || GetSession() != nullptr) {
+        throw std::runtime_error("reset smoke: the session stayed open after the reset");
+    }
+    for (const HostedGame& hosted : sGames) {
+        if (hosted.fiber == nullptr) {
+            continue;
+        }
+        const auto status = nlohmann::json::parse(hosted.module->Request("RuntimeStatus"));
+        if (status.value("playing", false)) {
+            throw std::runtime_error(std::string("reset smoke: ") + hosted.module->Name() +
+                                     " kept playing the closed session");
+        }
+    }
+    if (sSaveMenu == nullptr || !sSaveMenu->Enabled()) {
+        throw std::runtime_error("reset smoke: Fleet's file select did not come back");
+    }
+    sSaveMenu->Automate(slot, true);
+    sSmokeResetsLeft--;
+    sSmokeResetsDone++;
+    sSmokeSwitchesDone = 0;
+    std::cout << "[fleet] reset smoke: session closed in-process, reopening slot " << slot << std::endl;
+}
+
 void CountSmokeFrame(GameIndex game) {
     if (sSmokeFrames <= 0 || ++sFramesRun[game] % sSmokeFrames != 0) {
         return;
@@ -1023,6 +1335,10 @@ void CountSmokeFrame(GameIndex game) {
             sDropWalk = CreateDropWalk(game);
             return;
         }
+        if (sEnemyWalkGame == game && sEnemyWalk == nullptr) {
+            sEnemyWalk = CreateEnemyWalk(game);
+            return;
+        }
         if (sCrossWalkGame.has_value() && sCrossWalk == nullptr && otherGameRan) {
             sCrossWalk = CreateCrossWalk(*sCrossWalkGame);
             return;
@@ -1037,6 +1353,15 @@ void CountSmokeFrame(GameIndex game) {
         }
         if (!sShareWalkGame.empty() && sShareWalk == nullptr && otherGameRan) {
             sShareWalk = CreateShareWalk();
+            return;
+        }
+        if (sAssetCatalogueRequested && sPhotoWalk == nullptr && sItemReview == nullptr && otherGameRan) {
+            std::cout << "[fleet] asset catalogue: " << WriteAssetCatalogue() << std::endl;
+            if (sAssetReview.empty()) {
+                sPhotoWalk = CreatePhotoWalk();
+            } else {
+                sItemReview = CreateItemReview();
+            }
             return;
         }
         if (sTransitionWalkRequested && sTransitionWalk == nullptr && otherGameRan) {
@@ -1054,6 +1379,11 @@ void CountSmokeFrame(GameIndex game) {
         if (CollectSmokeItem(game)) {
             return;
         }
+        constexpr int kSwitchesBeforeReset = 2;
+        if (sSmokeResetsLeft > 0 && sSmokeSwitchesDone >= kSwitchesBeforeReset) {
+            ResetSessionForSmoke();
+            return;
+        }
     }
     std::cout << "[fleet] " << sGames[game].module->Name() << " ran " << sFramesRun[game] << " frames" << std::endl;
     if (sSmokeSwitchesDone++ == kSmokeSwitches) {
@@ -1068,6 +1398,9 @@ void CountSmokeFrame(GameIndex game) {
         std::cout << "[fleet] native child menus smoke passed" << std::endl;
         if (sSmokePortals) {
             std::cout << "[fleet] cross-game arrival smoke passed" << std::endl;
+        }
+        if (sSmokeResetsDone > 0) {
+            std::cout << "[fleet] in-process reset smoke passed: " << sSmokeResetsDone << " resets" << std::endl;
         }
         std::cout << "[fleet] smoke test passed" << std::endl;
         EndProcess(0);
@@ -1091,7 +1424,49 @@ void CatchUpParkedGame(const char* activeGame) {
     }
 }
 
+#ifdef _WIN32
+// The host context has no crash handler and each game's handler shows a dialog, so quiet runs keep their own.
+std::shared_ptr<Ship::CrashHandler> sQuietCrashHandler;
+
+// A test run must never wait on a dialog: the crash is logged with its stack and the supervisor sees the exit.
+LONG WINAPI ReportCrashQuietly(PEXCEPTION_POINTERS exception) {
+    std::cerr << "[fleet] crash: exception 0x" << std::hex << exception->ExceptionRecord->ExceptionCode << " at "
+              << exception->ExceptionRecord->ExceptionAddress << std::dec << std::endl;
+    if (sQuietCrashHandler != nullptr && Ship::Context::GetRawInstance() != nullptr) {
+        sQuietCrashHandler->PrintStack(exception->ContextRecord);
+    }
+    std::cerr.flush();
+    return EXCEPTION_EXECUTE_HANDLER;
+}
+#endif
+
+// Each game installs libultraship's crash dialog when it starts, so the quiet filter is put back every frame.
+void KeepCrashesQuiet() {
+#ifdef _WIN32
+    if (sQuietCrashes) {
+        SetUnhandledExceptionFilter(ReportCrashQuietly);
+    }
+#endif
+}
+
+void SilenceCrashDialogs() {
+#ifdef _WIN32
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX | SEM_NOOPENFILEERRORBOX);
+    WerSetFlags(WER_FAULT_REPORTING_NO_UI);
+    // Constructing the handler installs libultraship's dialog filter, replaced on the next line.
+    sQuietCrashHandler = std::make_shared<Ship::CrashHandler>();
+    SetUnhandledExceptionFilter(ReportCrashQuietly);
+#endif
+}
+
+bool IsQuietRun(const Options& options) {
+    return options.hidden || options.itemWalkGame || options.dropWalkGame || options.enemyWalkGame ||
+           options.crossWalkGame || options.songWalk || !options.itemRainGames.empty() ||
+           !options.shareWalkGame.empty() || options.assetCatalogue || options.transitionWalk;
+}
+
 void FrameEnd(const char* game) {
+    KeepCrashesQuiet();
     CatchUpParkedGame(game);
     sSession.CommitIfRequested();
     if (sCreatedStartPending) {
@@ -1250,8 +1625,14 @@ void FrameEnd(const char* game) {
         AdvanceTestWalk(*sItemRain, game, "item rain");
     } else if (sShareWalk != nullptr) {
         AdvanceTestWalk(*sShareWalk, game, "share walk");
+    } else if (sPhotoWalk != nullptr) {
+        AdvanceTestWalk(*sPhotoWalk, game, "photo walk");
+    } else if (sItemReview != nullptr) {
+        AdvanceTestWalk(*sItemReview, game, "item review");
     } else if (sTransitionWalk != nullptr) {
         AdvanceTestWalk(*sTransitionWalk, game, "transition walk");
+    } else if (sEnemyWalk != nullptr) {
+        AdvanceTestWalk(*sEnemyWalk, game, "enemy walk");
     } else if (sSaveMenu == nullptr || !sSaveMenu->Enabled()) {
         CountSmokeFrame(IndexOf(game));
     }
@@ -1274,7 +1655,7 @@ bool FileSelect() {
         return true;
     }
     if (sSession.Enabled()) {
-        OpenFileSelector(sGames[sActive].module->Name());
+        CloseSession();
         return true;
     }
     if (!HasFileSelect()) {
@@ -1419,15 +1800,7 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
     for (int i = 1; i + 1 < argc; i += 2) {
         const std::string flag = argv[i];
         const std::string value = argv[i + 1];
-        if (flag == "--internal-mode" && (value == "0" || value == "1" || value == "2")) {
-            options.mode = std::stoi(value);
-            options.internalRestore = true;
-        } else if (flag == "--internal-start" && (value == "oot" || value == "mm")) {
-            options.start = value == "mm" ? Mm : Oot;
-            options.explicitStart = true;
-        } else if (flag == "--internal-saves") {
-            options.savesDirectory = value;
-        } else if (flag == "--oot") {
+        if (flag == "--oot") {
             options.ootDirectory = value;
         } else if (flag == "--mm") {
             options.mmDirectory = value;
@@ -1466,6 +1839,8 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             options.smokeNew = std::stoi(value);
         } else if (flag == "--smoke-resume" && (value == "0" || value == "1")) {
             options.smokeResume = value == "1";
+        } else if (flag == "--smoke-reset" && std::atoi(value.c_str()) > 0) {
+            options.smokeResets = std::atoi(value.c_str());
         } else if (flag == "--smoke-cycle" && (value == "0" || value == "1")) {
             options.smokeCycle = value == "1";
         } else if (flag == "--item-test" && (value == "0" || value == "1")) {
@@ -1497,6 +1872,12 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             options.itemRainWaves = std::atoi(value.c_str());
         } else if (flag == "--share-walk" && (value == "oot" || value == "mm")) {
             options.shareWalkGame = value;
+        } else if (flag == "--asset-catalogue" && value == "1") {
+            options.assetCatalogue = true;
+        } else if (flag == "--asset-review" && (value == "pending" || value == "failed" || value == "all")) {
+            options.assetReview = value;
+        } else if (flag == "--asset-review-only") {
+            options.assetReviewOnly = value;
         } else if (flag == "--share-walk-baseline") {
             options.shareWalkBaseline = value;
         } else if (flag == "--save-budget-ms" && std::atof(value.c_str()) > 0.0) {
@@ -1505,6 +1886,21 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             options.transitionWalk = value == "1";
         } else if (flag == "--transition-walk-only") {
             options.transitionWalkOnly = value;
+        } else if (flag == "--enemy-walk" && (value == "oot" || value == "mm")) {
+            options.enemyWalkGame = value == "mm" ? Mm : Oot;
+        } else if (flag == "--enemy-walk-only") {
+            options.enemyWalk.only = value;
+        } else if (flag == "--enemy-walk-frames" && std::atoi(value.c_str()) > 0) {
+            options.enemyWalk.frames = std::atoi(value.c_str());
+        } else if (flag == "--enemy-walk-scenes" && std::atoi(value.c_str()) > 0) {
+            options.enemyWalk.scenesPerEnemy = std::atoi(value.c_str());
+        } else if (flag == "--enemy-walk-spawns") {
+            options.enemyWalk.spawns = value;
+        } else if (flag == "--enemy-walk-candidates") {
+            options.enemyWalk.candidates = value;
+        } else if (flag == "--enemy-walk-shard" && EnemyWalk::ParseShard(value, options.enemyWalk)) {
+        } else if (flag == "--enemy-walk-resume" && std::atoi(value.c_str()) >= 0) {
+            options.enemyWalk.resume = static_cast<size_t>(std::atoi(value.c_str()));
 #endif
         } else {
             return false;
@@ -1513,7 +1909,8 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
     return (!options.ootDirectory.empty() || !options.mmDirectory.empty()) &&
            (!(options.smokeItems || options.smokePortals || options.smokeCycle) ||
             (options.smokeFrames > 0 && (!options.seedPath.empty() || options.smokeNew >= 0))) &&
-           (options.smokeNew < 0 || (options.hidden && options.smokeFrames > 0 && options.seedPath.empty()));
+           (options.smokeNew < 0 || (options.hidden && options.smokeFrames > 0 && options.seedPath.empty())) &&
+           (options.smokeResets == 0 || options.smokeNew >= 0);
 }
 
 void CreateHostContext() {
@@ -1544,9 +1941,37 @@ bool AttachGames(const Options& options) {
     for (const std::string& problem : sAttachProblems) {
         text += problem + "\n\n";
     }
-    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fleet cannot start", text.c_str(), nullptr);
+    std::cerr << "[fleet] cannot start: " << text;
+    if (!sQuietCrashes) {
+        SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fleet cannot start", text.c_str(), nullptr);
+    }
     return false;
 }
+
+#ifdef _WIN32
+// A hidden test is silent. The mute belongs to this process's audio session, so no game setting changes.
+void MuteThisProcess() {
+    CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    IMMDeviceEnumerator* devices = nullptr;
+    if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, IID_PPV_ARGS(&devices)))) {
+        return;
+    }
+    IMMDevice* speakers = nullptr;
+    IAudioSessionManager* sessions = nullptr;
+    ISimpleAudioVolume* volume = nullptr;
+    if (SUCCEEDED(devices->GetDefaultAudioEndpoint(eRender, eConsole, &speakers)) &&
+        SUCCEEDED(speakers->Activate(__uuidof(IAudioSessionManager), CLSCTX_ALL, nullptr,
+                                     reinterpret_cast<void**>(&sessions))) &&
+        SUCCEEDED(sessions->GetSimpleAudioVolume(nullptr, FALSE, &volume))) {
+        volume->SetMute(TRUE, nullptr);
+    }
+    for (IUnknown* object : std::initializer_list<IUnknown*>{ volume, sessions, speakers, devices }) {
+        if (object != nullptr) {
+            object->Release();
+        }
+    }
+}
+#endif
 
 void OpenWindow(const Options& options) {
     Ship::Context* context = Ship::Context::GetRawInstance();
@@ -1598,6 +2023,7 @@ void OpenWindow(const Options& options) {
 #endif
     if (options.hidden) {
 #ifdef _WIN32
+        MuteThisProcess();
         EnumWindows(
             [](HWND window, LPARAM) -> BOOL {
                 DWORD process = 0;
@@ -1651,8 +2077,14 @@ int RunFleet(int argc, char* argv[]) {
                             "{ \"oot\": \"D:/Games/soh\", \"mm\": \"D:/Games/2ship\" }\n\n"
                             "Open Fleet and choose Combo, Ocarina of Time or Majora's Mask.";
         std::cerr << usage << "\n";
+#ifndef FLEET_TEST_DRIVER
         SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fleet", usage, nullptr);
+#endif
         return 2;
+    }
+    sQuietCrashes = IsQuietRun(options);
+    if (sQuietCrashes) {
+        SilenceCrashDialogs();
     }
     if (options.smokeFrames == 0 && !EnsureGameInstalls(InstallFolder(), options.ootDirectory, options.mmDirectory)) {
         return 2;
@@ -1661,6 +2093,7 @@ int RunFleet(int argc, char* argv[]) {
     sSmokeItems = options.smokeItems;
     sSmokePortals = options.smokePortals;
     sSmokeCycle = options.smokeCycle;
+    sSmokeResetsLeft = options.smokeResets;
     sSmokeItemTest = options.smokeItemTest;
     sItemWalkGame = options.itemWalkGame;
     sItemWalkCopies = options.itemWalkCopies;
@@ -1676,9 +2109,14 @@ int RunFleet(int argc, char* argv[]) {
     sItemRainWaves = options.itemRainWaves;
     sItemRainSaveBudgetMs = options.itemRainSaveBudgetMs;
     sShareWalkGame = options.shareWalkGame;
+    sAssetCatalogueRequested = options.assetCatalogue || !options.assetReview.empty();
+    sAssetReview = options.assetReview;
+    sAssetReviewOnly = options.assetReviewOnly;
     sShareWalkBaseline = options.shareWalkBaseline;
     sTransitionWalkRequested = options.transitionWalk;
     sTransitionWalkOnly = options.transitionWalkOnly;
+    sEnemyWalkGame = options.enemyWalkGame;
+    sEnemyWalkSettings = options.enemyWalk;
     sSmokeName = options.smokeName;
     sSmokeNativeGeneration = options.smokeNativeGeneration;
     sSmokePages = options.smokePages;
@@ -1794,6 +2232,11 @@ int main(int argc, char* argv[]) {
         return FleetSeedWorker(argc - 1, argv + 1);
     }
     try {
+#ifdef FLEET_TEST_DRIVER
+        if (EnemyWalk::IsSupervisorCall(argc, argv)) {
+            EndProcess(EnemyWalk::Supervise(argc, argv, InstallFolder()));
+        }
+#endif
         const int status = RunFleet(argc, argv);
         SaveHostSettings();
         EndProcess(status);

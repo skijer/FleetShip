@@ -607,6 +607,10 @@ void WriteDumps(const Fill& fill, const std::string& directory) {
     std::ofstream(std::filesystem::path(directory) / "fill.json") << fill.result.spoilerJson;
 }
 
+ComboRando::ComboGenProgress* ProgressCounters() {
+    return sProgress ? sProgress->Counters() : nullptr;
+}
+
 ComboRando::RequirednessResult FindRequiredItems(const Fill& fill, const Options& options, bool noLogic) {
     if (options.goal.hunt && noLogic) {
         return {};
@@ -668,10 +672,6 @@ void EnterStage(GenerationStage stage) {
     if (sProgress) {
         sProgress->Enter(stage);
     }
-}
-
-ComboRando::ComboGenProgress* ProgressCounters() {
-    return sProgress ? sProgress->Counters() : nullptr;
 }
 
 const char* const kMmStartingItemsKey = "gRando.StartingItems";

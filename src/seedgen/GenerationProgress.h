@@ -41,12 +41,18 @@ class GenerationProgress {
   public:
     explicit GenerationProgress(std::filesystem::path path) : mPath(std::move(path)) {
         Write();
-        mWriter = std::jthread([this](std::stop_token stop) {
-            while (!stop.stop_requested()) {
+        mWriter = std::thread([this] {
+            while (!mIsStopping.load()) {
                 std::this_thread::sleep_for(std::chrono::milliseconds(250));
                 Write();
             }
         });
+    }
+
+    // Apple's libc++ has no std::jthread, so the writer is stopped and joined by hand.
+    ~GenerationProgress() {
+        mIsStopping.store(true);
+        mWriter.join();
     }
 
     GenerationProgress(const GenerationProgress&) = delete;
@@ -120,5 +126,6 @@ class GenerationProgress {
     ComboRando::ComboGenProgress mCounters;
     std::atomic<GenerationStage> mStage{ GenerationStage::Starting };
     std::atomic<int> mAttempt{ 1 };
-    std::jthread mWriter;
+    std::atomic<bool> mIsStopping{ false };
+    std::thread mWriter;
 };

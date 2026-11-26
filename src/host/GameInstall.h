@@ -34,7 +34,10 @@ struct UpdateReport {
     std::vector<std::string> problems;
 };
 
-UpdateReport CheckForUpdates(const UpdateFolders& folders);
+// Fleet and both games: they only work at matching versions, so they are installed together.
+UpdateReport CheckCoreUpdates(const UpdateFolders& folders);
+// The store mods the player installed, plus any a Fleet mod needs but is missing.
+UpdateReport CheckModUpdates(const UpdateFolders& folders);
 // Assumes no game of this process is attached yet: the games and their mods are replaced in place.
 void ApplyUpdate(const UpdateEntry& entry, const UpdateFolders& folders, std::atomic<size_t>& progress);
 void RestartFleet();

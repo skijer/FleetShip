@@ -649,21 +649,20 @@ void AddModEntries(UpdateReport& report, const ModCatalog& catalog, const fs::pa
     const fs::path storeFolder = gameFolder / "mods" / "neistore";
     const fs::path fleetMods = fleetFolder / "mods" / catalog.gameKey;
     std::set<std::string> installed;
-    for (const fs::path& folder : { gameFolder / "mods", fleetMods }) {
-        for (const fs::path& package : ListPackages(folder)) {
-            const std::string id = PackageId(package);
-            const bool isNew = installed.insert(id).second;
-            const Json* build = mods.contains(id) ? FindModBuild(mods.at(id), catalog.gameKey) : nullptr;
-            if (!isNew || package.extension() != ".o2r" || build == nullptr ||
-                build->value("hash", "") == HashHex(ReadFileBytes(package))) {
-                continue;
-            }
-            UpdateEntry entry = ModEntry(catalog, mods.at(id), id, *build);
-            const auto manifest = ReadPackageManifest(package);
-            entry.installed = manifest ? VersionText(manifest->value("version", Json())) : "";
-            entry.target = package;
-            report.entries.push_back(std::move(entry));
+    // Fleet's own compatibility mods come inside its package and are updated with it.
+    for (const fs::path& package : ListPackages(gameFolder / "mods")) {
+        const std::string id = PackageId(package);
+        const bool isNew = installed.insert(id).second;
+        const Json* build = mods.contains(id) ? FindModBuild(mods.at(id), catalog.gameKey) : nullptr;
+        if (!isNew || package.extension() != ".o2r" || build == nullptr ||
+            build->value("hash", "") == HashHex(ReadFileBytes(package))) {
+            continue;
         }
+        UpdateEntry entry = ModEntry(catalog, mods.at(id), id, *build);
+        const auto manifest = ReadPackageManifest(package);
+        entry.installed = manifest ? VersionText(manifest->value("version", Json())) : "";
+        entry.target = package;
+        report.entries.push_back(std::move(entry));
     }
     for (const std::string& id : FindFleetDependencies(mods, fleetMods)) {
         const Json* build = mods.contains(id) ? FindModBuild(mods.at(id), catalog.gameKey) : nullptr;
@@ -754,36 +753,56 @@ void ApplyFleet(const UpdateEntry& entry, std::atomic<size_t>& progress) {
 }
 } // namespace
 
-UpdateReport CheckForUpdates(const UpdateFolders& folders) {
-    UpdateReport report;
+namespace {
+std::optional<Json> ReadUpdatableInstall(const fs::path& fleetFolder, UpdateReport& report) {
 #ifndef _WIN32
     report.unavailableReason = "Fleet downloads updates on Windows; here, download the latest Fleet package.";
-    return report;
+    return std::nullopt;
 #endif
-    const auto info = ReadInstallInfo(folders.fleet);
+    auto info = ReadInstallInfo(fleetFolder);
     if (!info) {
         report.unavailableReason = "This Fleet was not installed from a release package, so it does not update.";
-        return report;
+        return std::nullopt;
     }
     if (info->value("edition", "") != "release") {
         report.unavailableReason = "The modders edition does not update itself; download its latest package instead.";
+        return std::nullopt;
+    }
+    return info;
+}
+
+void AttemptCheck(UpdateReport& report, const std::string& source, const std::function<void()>& check) {
+    try {
+        check();
+    } catch (const std::exception& error) { report.problems.push_back(source + ": " + error.what()); }
+}
+} // namespace
+
+UpdateReport CheckCoreUpdates(const UpdateFolders& folders) {
+    UpdateReport report;
+    const auto info = ReadUpdatableInstall(folders.fleet, report);
+    if (!info) {
         return report;
     }
-    const auto attempt = [&report](const std::string& source, const auto& check) {
-        try {
-            check();
-        } catch (const std::exception& error) { report.problems.push_back(source + ": " + error.what()); }
-    };
-    attempt("Fleet", [&] { AddFleetEntry(report, folders, info->value("version", "")); });
+    AttemptCheck(report, "Fleet", [&] { AddFleetEntry(report, folders, info->value("version", "")); });
     const fs::path gameFolders[] = { folders.oot, folders.mm };
     for (size_t game = 0; game < std::size(Games); ++game) {
-        attempt(GameTitle(game), [&] { AddGameEntry(report, game, gameFolders[game]); });
-    }
-    for (size_t game = 0; game < std::size(Catalogs); ++game) {
-        attempt(std::string(GameTitle(game)) + " mods",
-                [&] { AddModEntries(report, Catalogs[game], gameFolders[game], folders.fleet); });
+        AttemptCheck(report, GameTitle(game), [&] { AddGameEntry(report, game, gameFolders[game]); });
     }
     AddMissingExtractionNotes(report, folders.oot, folders.mm);
+    return report;
+}
+
+UpdateReport CheckModUpdates(const UpdateFolders& folders) {
+    UpdateReport report;
+    if (!ReadUpdatableInstall(folders.fleet, report)) {
+        return report;
+    }
+    const fs::path gameFolders[] = { folders.oot, folders.mm };
+    for (size_t game = 0; game < std::size(Catalogs); ++game) {
+        AttemptCheck(report, std::string(GameTitle(game)) + " mods",
+                     [&] { AddModEntries(report, Catalogs[game], gameFolders[game], folders.fleet); });
+    }
     return report;
 }
 

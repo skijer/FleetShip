@@ -1608,19 +1608,25 @@ void FleetGui::OpenRandomizer() {
     mFleetMenu->Show();
 }
 namespace {
+template <typename Result> bool IsReady(const std::future<Result>& future) {
+    return future.valid() && future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+}
+
 class UpdatePanel {
   public:
     explicit UpdatePanel(UpdateFolders folders) : mFolders(std::move(folders)) {
-        StartCheck();
+        StartCoreCheck();
     }
-    bool IsBusy() const {
-        return mApplying.valid();
+    // The games stay closed until Fleet and both games are known to match, and while anything is replaced.
+    bool BlocksPlay() const {
+        return mCoreCheck.valid() || mApplying.valid();
     }
     // True once the updated Fleet has started and this one has to close.
     bool Draw(const ImVec4& theme) {
         if (Poll()) {
             return true;
         }
+        DrawCoreModal(theme);
         DrawCornerButton(theme);
         if (mIsOpen) {
             DrawPanel(theme);
@@ -1629,16 +1635,29 @@ class UpdatePanel {
     }
 
   private:
-    void StartCheck() {
-        mChecking = std::async(std::launch::async, [folders = mFolders] { return CheckForUpdates(folders); });
+    void StartCoreCheck() {
+        mCore = {};
+        mCoreCheck = std::async(std::launch::async, [folders = mFolders] { return CheckCoreUpdates(folders); });
     }
-    template <typename Result> static bool IsReady(const std::future<Result>& future) {
-        return future.valid() && future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+    // Only on the player's request: the store is not asked about their mods at every start.
+    void StartModCheck() {
+        mMods = {};
+        mChosenMods.clear();
+        mHasCheckedMods = true;
+        mModCheck = std::async(std::launch::async, [folders = mFolders] { return CheckModUpdates(folders); });
+    }
+    void StartCheck() {
+        StartCoreCheck();
+        StartModCheck();
     }
     bool Poll() {
-        if (IsReady(mChecking)) {
-            mReport = mChecking.get();
-            mChosen.assign(mReport.entries.size(), true);
+        if (IsReady(mCoreCheck)) {
+            mCore = mCoreCheck.get();
+            mIsCoreModalWanted = !mCore.entries.empty();
+        }
+        if (IsReady(mModCheck)) {
+            mMods = mModCheck.get();
+            mChosenMods.assign(mMods.entries.size(), true);
         }
         if (!IsReady(mApplying)) {
             return false;
@@ -1650,20 +1669,27 @@ class UpdatePanel {
                 return true;
             } catch (const std::exception& error) { mFailures.push_back(error.what()); }
         }
-        StartCheck();
+        StartCoreCheck();
+        if (mHasCheckedMods) {
+            StartModCheck();
+        }
         return false;
     }
+    bool IsChecking() const {
+        return mCoreCheck.valid() || mModCheck.valid();
+    }
     std::string ButtonLabel() const {
-        if (mChecking.valid()) {
+        if (IsChecking()) {
             return "Checking for updates...";
         }
-        if (!mReport.unavailableReason.empty()) {
+        if (!mCore.unavailableReason.empty()) {
             return "Updates";
         }
-        if (!mReport.entries.empty()) {
-            return "Updates available (" + std::to_string(mReport.entries.size()) + ")";
+        const size_t count = mCore.entries.size() + mMods.entries.size();
+        if (count > 0) {
+            return "Updates available (" + std::to_string(count) + ")";
         }
-        return mReport.problems.empty() ? "Up to date" : "Updates: see notes";
+        return mCore.problems.empty() && mMods.problems.empty() ? "Up to date" : "Updates: see notes";
     }
     void DrawCornerButton(const ImVec4& theme) {
         const auto* viewport = ImGui::GetMainViewport();
@@ -1672,7 +1698,7 @@ class UpdatePanel {
         ImGui::Begin("##FleetUpdatesCorner", nullptr,
                      ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_AlwaysAutoResize |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground);
-        const bool hasUpdates = !mReport.entries.empty() && !mChecking.valid();
+        const bool hasUpdates = !IsChecking() && (!mCore.entries.empty() || !mMods.entries.empty());
         if (hasUpdates) {
             ComboRando::ComboMenu_PushButton(theme);
         }
@@ -1684,25 +1710,121 @@ class UpdatePanel {
         }
         ImGui::End();
     }
-    void DrawEntries() {
-        for (size_t index = 0; index < mReport.entries.size(); index++) {
-            const UpdateEntry& entry = mReport.entries[index];
-            bool isChosen = mChosen[index];
-            if (ImGui::Checkbox((entry.label + "##update" + std::to_string(index)).c_str(), &isChosen)) {
-                mChosen[index] = isChosen;
-            }
-            const std::string installed = entry.installed.empty() ? "installed" : entry.installed;
+    static void DrawVersion(const UpdateEntry& entry) {
+        const std::string installed = entry.installed.empty() ? "installed" : entry.installed;
+        ImGui::TextDisabled("%s -> %s", installed.c_str(), entry.latest.c_str());
+    }
+    void DrawCoreEntries() const {
+        for (const UpdateEntry& entry : mCore.entries) {
+            ImGui::BulletText("%s", entry.label.c_str());
             ImGui::SameLine();
-            ImGui::TextDisabled("%s -> %s", installed.c_str(), entry.latest.c_str());
+            DrawVersion(entry);
         }
     }
-    bool IsFleetChosen() const {
-        for (size_t index = 0; index < mReport.entries.size(); index++) {
-            if (mChosen[index] && mReport.entries[index].kind == UpdateKind::Fleet) {
-                return true;
+    void DrawModEntries() {
+        for (size_t index = 0; index < mMods.entries.size(); index++) {
+            const UpdateEntry& entry = mMods.entries[index];
+            bool isChosen = mChosenMods[index];
+            if (ImGui::Checkbox((entry.label + "##update" + std::to_string(index)).c_str(), &isChosen)) {
+                mChosenMods[index] = isChosen;
+            }
+            ImGui::SameLine();
+            DrawVersion(entry);
+        }
+    }
+    void DrawNotes() const {
+        for (const UpdateReport* report : { &mCore, &mMods }) {
+            for (const std::string& problem : report->problems) {
+                ImGui::TextColored(ImVec4(1, 0.6f, 0.4f, 1), "%s", problem.c_str());
             }
         }
-        return false;
+    }
+    void DrawFailuresAndProgress() {
+        for (const std::string& failure : mFailures) {
+            ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", failure.c_str());
+        }
+        if (mApplying.valid()) {
+            ImGui::Text("Updating %s: %zu KiB received", CurrentLabel().c_str(), mReceived.load() / 1024);
+        }
+    }
+    bool HasFleetUpdate() const {
+        return std::any_of(mCore.entries.begin(), mCore.entries.end(),
+                           [](const UpdateEntry& entry) { return entry.kind == UpdateKind::Fleet; });
+    }
+    void DrawCoreModal(const ImVec4& theme) {
+        constexpr const char* Title = "Updates for Fleet###FleetCoreUpdate";
+        if (mIsCoreModalWanted) {
+            ImGui::OpenPopup(Title);
+            mIsCoreModalWanted = false;
+        }
+        const auto* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        ImGui::SetNextWindowSizeConstraints(ImVec2(440, 0), ImVec2(560, viewport->WorkSize.y - 64));
+        if (!ImGui::BeginPopupModal(Title, nullptr,
+                                    ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
+                                        ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize)) {
+            return;
+        }
+        if (!BlocksPlay() && mCore.entries.empty() && mFailures.empty()) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::TextWrapped("Fleet, Ship and 2Ship only work together at matching versions, so they are updated "
+                           "together.");
+        DrawCoreEntries();
+        if (HasFleetUpdate()) {
+            ImGui::TextDisabled("Fleet closes and opens again by itself to finish its own update.");
+        }
+        DrawFailuresAndProgress();
+        ImGui::Separator();
+        ComboRando::ComboMenu_PushButton(theme);
+        ImGui::BeginDisabled(BlocksPlay() || mCore.entries.empty());
+        if (ImGui::Button("Install now")) {
+            StartApply(mCore.entries);
+        }
+        ImGui::EndDisabled();
+        ImGui::SameLine();
+        ImGui::BeginDisabled(mApplying.valid());
+        if (ImGui::Button("Install later")) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndDisabled();
+        ComboRando::ComboMenu_PopButton();
+        ImGui::EndPopup();
+    }
+    void DrawCoreSection() {
+        ImGui::SeparatorText("Fleet and both games");
+        if (mCoreCheck.valid()) {
+            ImGui::TextDisabled("Checking Fleet, Ship and 2Ship...");
+            return;
+        }
+        if (mCore.entries.empty()) {
+            ImGui::TextWrapped("Fleet, Ship and 2Ship are up to date.");
+            return;
+        }
+        DrawCoreEntries();
+        ImGui::BeginDisabled(mApplying.valid());
+        if (ImGui::Button("Install now")) {
+            StartApply(mCore.entries);
+        }
+        ImGui::EndDisabled();
+    }
+    void DrawModSection() {
+        ImGui::SeparatorText("Your mods");
+        if (mModCheck.valid()) {
+            ImGui::TextDisabled("Checking your installed mods...");
+            return;
+        }
+        if (!mHasCheckedMods) {
+            ImGui::TextWrapped("Check for updates to see whether the mods you installed have newer versions.");
+            return;
+        }
+        if (mMods.entries.empty()) {
+            ImGui::TextWrapped("Your installed mods are up to date.");
+            return;
+        }
+        ImGui::BeginDisabled(mApplying.valid());
+        DrawModEntries();
+        ImGui::EndDisabled();
     }
     void DrawPanel(const ImVec4& theme) {
         const auto* viewport = ImGui::GetMainViewport();
@@ -1712,56 +1834,44 @@ class UpdatePanel {
         ImGui::Begin("Updates###FleetUpdatesPanel", &mIsOpen,
                      ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
                          ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_AlwaysAutoResize);
-        if (mChecking.valid()) {
-            ImGui::TextDisabled("Checking Fleet, both games and your installed mods...");
-        } else if (!mReport.unavailableReason.empty()) {
-            ImGui::TextWrapped("%s", mReport.unavailableReason.c_str());
-        } else if (mReport.entries.empty()) {
-            ImGui::TextWrapped("Fleet, both games and your installed mods are up to date.");
-        } else {
-            ImGui::BeginDisabled(IsBusy());
-            ComboRando::ComboMenu_PushCheckbox(theme);
-            DrawEntries();
-            ComboRando::ComboMenu_PopCheckbox();
-            ImGui::EndDisabled();
-            if (IsFleetChosen()) {
-                ImGui::TextDisabled("Fleet closes and opens again by itself to finish its own update.");
-            }
-        }
-        for (const std::string& problem : mReport.problems) {
-            ImGui::TextColored(ImVec4(1, 0.6f, 0.4f, 1), "%s", problem.c_str());
-        }
-        for (const std::string& failure : mFailures) {
-            ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", failure.c_str());
-        }
-        if (IsBusy()) {
-            ImGui::Text("Updating %s: %zu KiB received", CurrentLabel().c_str(), mReceived.load() / 1024);
-        }
-        ImGui::Separator();
-        const bool hasChoice = std::find(mChosen.begin(), mChosen.end(), true) != mChosen.end();
+        ComboRando::ComboMenu_PushCheckbox(theme);
         ComboRando::ComboMenu_PushButton(theme);
-        ImGui::BeginDisabled(IsBusy() || mChecking.valid() || !hasChoice);
-        if (ImGui::Button("Update selected")) {
-            StartApply();
+        if (mCore.unavailableReason.empty()) {
+            DrawCoreSection();
+            DrawModSection();
+        } else {
+            ImGui::TextWrapped("%s", mCore.unavailableReason.c_str());
+        }
+        DrawNotes();
+        DrawFailuresAndProgress();
+        ImGui::Separator();
+        const bool hasModChoice = std::find(mChosenMods.begin(), mChosenMods.end(), true) != mChosenMods.end();
+        ImGui::BeginDisabled(mApplying.valid() || IsChecking() || !hasModChoice);
+        if (ImGui::Button("Update selected mods")) {
+            StartApply(ChosenMods());
         }
         ImGui::EndDisabled();
         ImGui::SameLine();
-        ImGui::BeginDisabled(IsBusy() || mChecking.valid());
-        if (ImGui::Button("Check again")) {
+        ImGui::BeginDisabled(mApplying.valid() || IsChecking());
+        if (ImGui::Button("Check for updates")) {
             mFailures.clear();
             StartCheck();
         }
         ImGui::EndDisabled();
         ComboRando::ComboMenu_PopButton();
+        ComboRando::ComboMenu_PopCheckbox();
         ImGui::End();
     }
-    void StartApply() {
+    std::vector<UpdateEntry> ChosenMods() const {
         std::vector<UpdateEntry> chosen;
-        for (size_t index = 0; index < mReport.entries.size(); index++) {
-            if (mChosen[index]) {
-                chosen.push_back(mReport.entries[index]);
+        for (size_t index = 0; index < mMods.entries.size(); index++) {
+            if (mChosenMods[index]) {
+                chosen.push_back(mMods.entries[index]);
             }
         }
+        return chosen;
+    }
+    void StartApply(std::vector<UpdateEntry> chosen) {
         // Fleet restarts last, after the games and mods it starts with are already in place.
         std::stable_partition(chosen.begin(), chosen.end(),
                               [](const UpdateEntry& entry) { return entry.kind != UpdateKind::Fleet; });
@@ -1791,15 +1901,19 @@ class UpdatePanel {
     }
 
     UpdateFolders mFolders;
-    std::future<UpdateReport> mChecking;
+    std::future<UpdateReport> mCoreCheck;
+    std::future<UpdateReport> mModCheck;
     std::future<std::vector<std::string>> mApplying;
-    UpdateReport mReport;
-    std::vector<bool> mChosen;
+    UpdateReport mCore;
+    UpdateReport mMods;
+    std::vector<bool> mChosenMods;
     std::vector<std::string> mFailures;
     std::atomic<size_t> mReceived{ 0 };
     std::atomic<bool> mFleetReplaced{ false };
     std::mutex mLabelMutex;
     std::string mCurrentLabel;
+    bool mHasCheckedMods = false;
+    bool mIsCoreModalWanted = false;
     bool mIsOpen = false;
 };
 } // namespace
@@ -1844,13 +1958,17 @@ int FleetGui::ChooseGame(int current, const UpdateFolders& folders, int automati
                                "randomizer files.");
             ImGui::Spacing();
             ComboRando::ComboMenu_PushButton(theme);
-            ImGui::BeginDisabled(updates && updates->IsBusy());
+            const bool isPlayBlocked = updates && updates->BlocksPlay();
+            ImGui::BeginDisabled(isPlayBlocked);
             for (int mode = 0; mode < 3; mode++) {
                 if (ImGui::Button(labels[mode], ImVec2(-1, 48))) {
                     result = mode;
                 }
             }
             ImGui::EndDisabled();
+            if (isPlayBlocked) {
+                ImGui::TextDisabled("Checking that Fleet, Ship and 2Ship are up to date...");
+            }
             ImGui::Spacing();
             if (ImGui::Button("Quit", ImVec2(-1, 0))) {
                 result = -1;

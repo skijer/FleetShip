@@ -45,6 +45,7 @@ class EnemyWalk {
         size_t resume = 0;
         size_t shardIndex = 0;
         size_t shardCount = 1;
+        bool opensHints = false;
     };
 
     // "i/n" with 1 <= i <= n: this run takes every n-th request of the full list, starting at the i-th.

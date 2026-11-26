@@ -123,7 +123,8 @@ class ItemReview {
         }
         std::cout << "[fleet] review " << Key() << std::endl;
         SaveReview(Key());
-        mHost.request(Game(), "TestGetItem", { { "item", Item().item }, { "owner", Item().owner } });
+        mHost.request(Game(), "TestGetItem",
+                      { { "item", Item().item }, { "owner", Item().owner }, { "label", Label() } });
         SetTurbo(true);
         ShowPrompt();
         mChoice = Choice::None;
@@ -183,12 +184,15 @@ class ItemReview {
         return game == "oot" ? "Ocarina of Time" : "Majora's Mask";
     }
 
-    void ShowPrompt() {
+    std::string Label() const {
         const auto label = mReview.labels.find(Key());
+        return label != mReview.labels.end() ? label->second : Item().item;
+    }
+
+    void ShowPrompt() {
         const std::string from = Item().owner == Game() ? "" : "  (from " + TitleOf(Item().owner) + ")";
         std::string text = TitleOf(Game()) + "  " + std::to_string(mItem + 1) + "/" +
-                           std::to_string(mItems[mGame].second.size()) + "   " +
-                           (label != mReview.labels.end() ? label->second : Item().item) + from;
+                           std::to_string(mItems[mGame].second.size()) + "   " + Label() + from;
         const nlohmann::json earlier = mReview.items.value(Key(), nlohmann::json::object());
         const std::string verdict = earlier.value("verdict", std::string{});
         const std::string note = earlier.value("note", std::string{});

@@ -20,6 +20,7 @@
 #include <ship/GameRegistry.h>
 
 #include "GameModule.h"
+#include "GenerationProgress.h"
 #include "ServeProtocol.h"
 #include "rando/ComboPlaythrough.h"
 #include "rando/CrossDungeonCoordinator.h"
@@ -40,6 +41,7 @@ namespace {
 enum GameIndex { Oot, Mm, GameCount };
 
 std::array<std::unique_ptr<GameModule>, GameCount> sGames;
+std::unique_ptr<GenerationProgress> sProgress;
 
 enum class StartingGame { Oot, Mm, Random };
 
@@ -633,7 +635,7 @@ ComboRando::RequirednessResult FindRequiredItems(const Fill& fill, const Options
     }
     return ComboRando::PareDownPlaythrough(fill.result.spoilerJson, fill.ootOracle, fill.mmOracle, nullptr,
                                            fill.ootDump, fill.mmDump, ootAreas, mmAreas, goal, !noLogic, fill.mmStart,
-                                           nullptr, options.sharedMask,
+                                           ProgressCounters(), options.sharedMask,
                                            ComboRando::EncodeUnsharedSpec(options.unsharedPairs));
 }
 
@@ -662,10 +664,14 @@ bool LayOutCrossEntrances(Fill& fill, const Options& options) {
     return true;
 }
 
-void ReportProgress(const Options& options, const char* phase) {
-    if (!options.progressPath.empty()) {
-        std::ofstream(options.progressPath) << nlohmann::json{ { "phase", phase } }.dump();
+void EnterStage(GenerationStage stage) {
+    if (sProgress) {
+        sProgress->Enter(stage);
     }
+}
+
+ComboRando::ComboGenProgress* ProgressCounters() {
+    return sProgress ? sProgress->Counters() : nullptr;
 }
 
 const char* const kMmStartingItemsKey = "gRando.StartingItems";
@@ -727,7 +733,7 @@ bool WithholdMmEntryItems(const nlohmann::json& mmSettings, const std::string& m
 }
 
 Fill PrepareWorlds(uint32_t masterSeed, const Options& options, bool mmStart, const nlohmann::json& mmSettings) {
-    ReportProgress(options, "Preparing the OoT and MM worlds...");
+    EnterStage(GenerationStage::Preparing);
     sGames[Mm]->Request("RestoreSettings", mmSettings.dump());
     const std::string seed = nlohmann::json{ { "seed", masterSeed } }.dump();
     for (const auto& game : sGames) {
@@ -762,15 +768,16 @@ Fill FillOnce(uint32_t masterSeed, const Options& options, bool mmStart, const n
     }
     const std::string forcedOot = sGames[Oot]->Request("GetForcedPlacements");
     if (!options.poolOnly) {
-        ReportProgress(options, "Connecting entrances between both games...");
+        EnterStage(GenerationStage::Entrances);
         if (!LayOutCrossEntrances(fill, options)) {
             return fill;
         }
     }
     const ComboRando::OotAccess ootAccess = ComboRando::OotAccessFromDump(fill.ootDump);
-    ReportProgress(options, "Placing items and validating logic...");
+    EnterStage(GenerationStage::Placing);
     fill.result = ComboRando::CrossWorldCombinedFill(
-        fill.ootDump, fill.mmDump, masterSeed, fill.ootOracle, fill.mmOracle, nullptr, forcedOot, ootAccess, goal,
+        fill.ootDump, fill.mmDump, masterSeed, fill.ootOracle, fill.mmOracle, ProgressCounters(), forcedOot, ootAccess,
+        goal,
         mmStart ? ComboRando::GAME_MM : ComboRando::GAME_OOT, ComboRando::EncodeUnsharedSpec(options.unsharedPairs),
         options.sharedMask, options.poolOnly, options.plentifulModItems, options.rules);
     if (fill.result.success) {
@@ -780,7 +787,7 @@ Fill FillOnce(uint32_t masterSeed, const Options& options, bool mmStart, const n
         WriteDumps(fill, options.dumpDirectory);
     }
     if (fill.result.success && !options.poolOnly) {
-        ReportProgress(options, "Generating hints...");
+        EnterStage(GenerationStage::Hints);
         fill.requiredness = FindRequiredItems(fill, options, ootAccess == ComboRando::OotAccess::NO_LOGIC);
     }
     return fill;
@@ -814,10 +821,13 @@ nlohmann::json BuildSpoiler(const Fill& fill, const Options& options) {
     nlohmann::json foreign = ComboRando::BuildForeignArray(disguised, sharedMask, modPairs);
     const auto labels = ItemLabels(fill.ootDump, fill.mmDump);
     for (auto& entry : foreign) {
-        const auto label =
-            labels.find({ entry.value("itemGame", std::string{}), entry.value("itemName", std::string{}) });
-        if (label != labels.end()) {
-            entry["label"] = label->second;
+        const std::string game = entry.value("itemGame", std::string{});
+        for (const auto& [nameField, labelField] : { std::pair{ "itemName", "label" },
+                                                     std::pair{ "fakeItemName", "fakeLabel" } }) {
+            const auto label = labels.find({ game, entry.value(nameField, std::string{}) });
+            if (label != labels.end()) {
+                entry[labelField] = label->second;
+            }
         }
     }
 
@@ -934,6 +944,9 @@ Fill FillWithRetries(const Options& options) {
     for (int attempt = 0; attempt < kPrepareAttempts && fills < ComboRando::kFillAttempts && !fill.result.success;
          attempt++) {
         const uint32_t masterSeed = options.seed + attempt * 0x9E3779B9u;
+        if (sProgress) {
+            sProgress->BeginAttempt(attempt + 1);
+        }
         fill = FillOnce(masterSeed, options, ResolvesMmStart(options.start, masterSeed, fills), mmSettings);
         if (!fill.ootDump.empty() && !fill.mmDump.empty()) {
             fills++;
@@ -1287,6 +1300,9 @@ int GenerateSeed(int argc, char* argv[]) {
         return PrintShareArguments(options);
     }
     const bool commandLineGoal = options.goal.hunt || options.start != StartingGame::Oot;
+    if (!options.progressPath.empty()) {
+        sProgress = std::make_unique<GenerationProgress>(options.progressPath);
+    }
 
     Ship::Context* context = Ship::Context::CreateUninitializedInstance("Fleet", "fleet", "fleetship.json");
     context->InitLogging();
@@ -1328,6 +1344,7 @@ int GenerateSeed(int argc, char* argv[]) {
         std::cerr << "[fleet-seedgen] seed " << options.seed << " failed: " << fill.result.error << "\n";
         return 1;
     }
+    EnterStage(GenerationStage::Saving);
     // Finish drops the seed's restored lists, so the settings snapshot is taken first.
     const nlohmann::json spoiler = BuildSpoiler(fill, options);
     sGames[Mm]->Request("Finish");

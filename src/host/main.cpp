@@ -1169,7 +1169,9 @@ std::unique_ptr<EnemyWalk> CreateEnemyWalk(GameIndex watched) {
         .game = game,
         .gameDirectory = watched == Oot ? sOotDirectory : sMmDirectory,
         .settings = variables,
-        .forcedSettings = { { collisionViewer, 0 }, { CVAR_LOW_RES_MODE, kLowestResolution } },
+        .forcedSettings = { { collisionViewer, 0 },
+                            { CVAR_LOW_RES_MODE, kLowestResolution },
+                            { "gMods.EnemySpawnTester.Auto.OpenHint", sEnemyWalkSettings.opensHints ? 1 : 0 } },
         .saveSettings =
             [game, variables] {
                 Ship::GameScope scope(game);
@@ -1890,6 +1892,8 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             options.enemyWalkGame = value == "mm" ? Mm : Oot;
         } else if (flag == "--enemy-walk-only") {
             options.enemyWalk.only = value;
+        } else if (flag == "--enemy-walk-hints" && (value == "0" || value == "1")) {
+            options.enemyWalk.opensHints = value == "1";
         } else if (flag == "--enemy-walk-frames" && std::atoi(value.c_str()) > 0) {
             options.enemyWalk.frames = std::atoi(value.c_str());
         } else if (flag == "--enemy-walk-scenes" && std::atoi(value.c_str()) > 0) {

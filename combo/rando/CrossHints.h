@@ -224,18 +224,29 @@ inline nlohmann::json Generate(uint32_t masterSeed, const std::string& sohDumpJs
         info.weightClass = it.value("weightClass", 1u);
         mmItems.emplace(it.value("name", ""), std::move(info));
     }
+    std::unordered_map<std::string, std::string> ootDisplayNames;
+    for (auto& it : staticDump.value("items", nlohmann::json::array())) {
+        ootDisplayNames.emplace(it.value("name", ""), it.value("displayName", it.value("name", "")));
+    }
+    auto clearHint = [](const std::string& name) {
+        return nlohmann::json{ { "clear", { { "en", name }, { "de", name }, { "fr", name } } } };
+    };
 
+    // Mod items have no hint text of their own in OoT's dump, so they are named by their display name.
     auto itemHintAndWeight = [&](GameId itemGame, const std::string& itemKey,
                                  bool required) -> std::pair<nlohmann::json, uint32_t> {
         if (itemGame == GAME_OOT) {
             auto it = ootItemHints.find(itemKey);
             nlohmann::json hint = it != ootItemHints.end() ? it->second : nlohmann::json::object();
+            if (hint.value("clear", nlohmann::json::object()).empty()) {
+                auto name = ootDisplayNames.find(itemKey);
+                hint["clear"] = clearHint(name != ootDisplayNames.end() ? name->second : itemKey).at("clear");
+            }
             return { hint, required ? 3u : 1u };
         }
         auto it = mmItems.find(itemKey);
         std::string dn = it != mmItems.end() ? it->second.displayName : itemKey;
-        nlohmann::json hint = { { "clear", { { "en", dn }, { "de", dn }, { "fr", dn } } } };
-        return { hint, it != mmItems.end() ? std::max<uint32_t>(1, it->second.weightClass) : 1u };
+        return { clearHint(dn), it != mmItems.end() ? std::max<uint32_t>(1, it->second.weightClass) : 1u };
     };
 
     // Hint text must name a trap's disguise, never the trap itself.
@@ -249,10 +260,7 @@ inline nlohmann::json Generate(uint32_t masterSeed, const std::string& sohDumpJs
         auto it = disguiseByCheck.find((checkGame == GAME_OOT ? "oot:" : "mm:") + check);
         if (it == disguiseByCheck.end())
             return nlohmann::json();
-        nlohmann::json h = itemHintAndWeight(itemGame, it->second, false).first;
-        if (h.value("clear", nlohmann::json::object()).empty())
-            h = { { "clear", { { "en", it->second }, { "de", it->second }, { "fr", it->second } } } };
-        return h;
+        return itemHintAndWeight(itemGame, it->second, false).first;
     };
 
     for (auto& fm : foreignArray) {

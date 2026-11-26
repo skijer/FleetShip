@@ -601,10 +601,11 @@ const Json* FindModBuild(const Json& mod, const char* gameKey) {
 std::vector<fs::path> ListPackages(const fs::path& folder) {
     std::vector<fs::path> packages;
     std::error_code error;
-    for (const auto& file : fs::directory_iterator(folder, error)) {
-        const std::string name = file.path().filename().string();
+    auto file = fs::recursive_directory_iterator(folder, fs::directory_options::follow_directory_symlink, error);
+    for (; !error && file != fs::recursive_directory_iterator(); file.increment(error)) {
+        const std::string name = file->path().filename().string();
         if (name.ends_with(".o2r") || name.ends_with(".o2r.disabled")) {
-            packages.push_back(file.path());
+            packages.push_back(file->path());
         }
     }
     return packages;
@@ -648,7 +649,7 @@ void AddModEntries(UpdateReport& report, const ModCatalog& catalog, const fs::pa
     const fs::path storeFolder = gameFolder / "mods" / "neistore";
     const fs::path fleetMods = fleetFolder / "mods" / catalog.gameKey;
     std::set<std::string> installed;
-    for (const fs::path& folder : { gameFolder / "mods", storeFolder, fleetMods }) {
+    for (const fs::path& folder : { gameFolder / "mods", fleetMods }) {
         for (const fs::path& package : ListPackages(folder)) {
             const std::string id = PackageId(package);
             const bool isNew = installed.insert(id).second;

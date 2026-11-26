@@ -93,6 +93,8 @@ class FleetSaveMenu : public Ship::GuiWindow {
     void UseSeedFile(const std::filesystem::path& file);
     void DrawSeedChoice(const ImVec4& theme);
     void DrawGenerationProgress();
+    void DrawSeedProgress();
+    const nlohmann::json& ReadSeedProgress();
     void DrawGenerationResult();
     void DrawStartingGame(const ImVec4& theme);
     void DrawGoal(const ImVec4& theme);
@@ -234,6 +236,9 @@ class FleetSaveMenu : public Ship::GuiWindow {
     std::filesystem::path mDirectory;
     std::filesystem::path mRoot;
     std::filesystem::path mRun;
+    nlohmann::json mSeedProgress = nlohmann::json::object();
+    std::chrono::steady_clock::time_point mGenerationStart;
+    std::chrono::steady_clock::time_point mSeedProgressRead;
     std::string mOot;
     std::string mMm;
     std::map<std::string, std::string> mLobbyDirectories;

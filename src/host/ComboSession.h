@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -26,6 +27,17 @@ class ComboSession {
     double SlowestReportMilliseconds() const;
     bool GiveItem(const std::string& game, const std::string& item);
     bool GiveItems(const std::vector<std::pair<std::string, std::string>>& items);
+    struct ReceivedItem {
+        int64_t index;
+        std::string game;
+        std::string item;
+    };
+    bool ReceiveItems(const std::vector<ReceivedItem>& items);
+    // Every check reported so far, as (game, check).
+    std::vector<std::pair<std::string, std::string>> ObtainedChecks() const;
+    const nlohmann::json& Seed() const {
+        return mSeed;
+    }
     nlohmann::json GivableItems() const;
     bool ReportSharedTiers(const std::string& game, const nlohmann::json& tiers);
     bool ReportBottles(const std::string& game, const std::string& bottles);

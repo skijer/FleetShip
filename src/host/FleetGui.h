@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 class FleetSaveMenu;
+class ApPanel;
 
 class FleetGui : public Fast::Fast3dGui {
   public:
@@ -48,7 +49,8 @@ class FleetGui : public Fast::Fast3dGui {
     };
     void SetReviewPrompt(const std::string& game, const std::string& item, const std::string& text);
     // Without automation the chooser also offers the updates of Fleet, the games and their mods.
-    int ChooseGame(int current, const UpdateFolders& folders, int automation = -1);
+    int ChooseGame(int current, const UpdateFolders& folders, int automation = -1, ApPanel* archipelago = nullptr);
+    void ShowArchipelagoMessage(const std::string& text);
 
   private:
     class Menu;
@@ -65,4 +67,5 @@ class FleetGui : public Fast::Fast3dGui {
     std::shared_ptr<Ship::GuiWindow> mLoadingOverlay;
     std::shared_ptr<ReviewPrompt> mReviewPrompt = std::make_shared<ReviewPrompt>();
     std::shared_ptr<Ship::GuiWindow> mReviewOverlay;
+    std::shared_ptr<Ship::GuiWindow> mArchipelagoFeed;
 };

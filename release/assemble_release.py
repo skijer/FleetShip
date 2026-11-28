@@ -96,6 +96,7 @@ def main():
         host.chmod(0o755)
     shutil.copytree(args.mods, staging / "mods")
     shutil.copy2(REPOSITORY_ROOT / "release" / "README-players.txt", staging / "README.txt")
+    shutil.copy2(REPOSITORY_ROOT / "release" / "GUIDE.md", staging / "GUIDE.md")
     # Fleet's updater reads this to know its version and to update only the edition it was installed as.
     (staging / "fleet-install.json").write_text(json.dumps({"version": version, "edition": args.edition}) + "\n",
                                                 encoding="utf-8")

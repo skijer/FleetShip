@@ -1,6 +1,7 @@
 #pragma once
 
 #include "PoolWorker.h"
+#include "../archipelago/ApExportActions.h"
 #include "SeedJob.h"
 #include "rando/ShareChoices.h"
 #include "rando/SharedItems.h"
@@ -33,6 +34,8 @@ class FleetSaveMenu : public Ship::GuiWindow {
     ~FleetSaveMenu() override;
     bool Enabled() const;
     bool OpenFiles();
+    // Opens the combo randomizer options with no file chosen, where the only way out is the Archipelago export.
+    void OpenArchipelagoSetup(const std::string& slot);
     bool SelectNative(int slot);
     bool GenerateNative(int slot);
     int GenerationState() const;
@@ -87,6 +90,8 @@ class FleetSaveMenu : public Ship::GuiWindow {
     void LoadSlots();
     void Select(int slot);
     void Generate();
+    void ExportArchipelago();
+    void DrawArchipelagoExport(const ImVec4& theme);
     std::filesystem::path SeedFolder() const;
     void RefreshSeedFiles();
     std::string StoreSeedFile(const std::filesystem::path& source, const std::string& name);
@@ -243,6 +248,11 @@ class FleetSaveMenu : public Ship::GuiWindow {
     std::string mMm;
     std::map<std::string, std::string> mLobbyDirectories;
     SeedJob mJob;
+    SeedJob mArchipelagoJob;
+    std::array<char, 17> mArchipelagoSlot = {};
+    bool mIsArchipelagoSetup = false;
+    ApExportActions mArchipelagoActions;
+    std::string mArchipelagoStatus;
     nlohmann::json mSlots = nlohmann::json::object();
     nlohmann::json mCatalogue;
     std::function<nlohmann::json(const std::string&)> mSnapshot;

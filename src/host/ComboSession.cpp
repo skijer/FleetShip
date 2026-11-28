@@ -393,17 +393,22 @@ double ComboSession::SlowestReportMilliseconds() const {
 
 namespace {
 constexpr const char* kGivenPrefix = "give:";
+constexpr const char* kReceivedPrefix = "ap:";
 
+// Reads "<prefix><game>:<index>:<item>", the id of an item handed over outside any check.
 std::optional<std::pair<std::string, std::string>> ParseGivenItem(const std::string& id) {
-    if (id.rfind(kGivenPrefix, 0) != 0) {
+    const size_t prefixSize = id.rfind(kGivenPrefix, 0) == 0      ? std::strlen(kGivenPrefix)
+                              : id.rfind(kReceivedPrefix, 0) == 0 ? std::strlen(kReceivedPrefix)
+                                                                  : 0;
+    if (prefixSize == 0) {
         return std::nullopt;
     }
-    const size_t gameEnd = id.find(':', std::strlen(kGivenPrefix));
+    const size_t gameEnd = id.find(':', prefixSize);
     const size_t indexEnd = gameEnd == std::string::npos ? std::string::npos : id.find(':', gameEnd + 1);
     if (indexEnd == std::string::npos) {
         return std::nullopt;
     }
-    const std::string game = id.substr(std::strlen(kGivenPrefix), gameEnd - std::strlen(kGivenPrefix));
+    const std::string game = id.substr(prefixSize, gameEnd - prefixSize);
     return std::make_pair(game, id.substr(indexEnd + 1));
 }
 struct ConsumablePair {
@@ -582,7 +587,7 @@ bool ComboSession::GiveItems(const std::vector<std::pair<std::string, std::strin
         return false;
     }
     auto given = std::count_if(mObtained.begin(), mObtained.end(),
-                               [](const std::string& id) { return ParseGivenItem(id).has_value(); });
+                               [](const std::string& id) { return id.rfind(kGivenPrefix, 0) == 0; });
     auto next = mObtained;
     for (const auto& [game, item] : items) {
         next.insert(std::string(kGivenPrefix) + game + ":" + std::to_string(given++) + ":" + item);
@@ -591,6 +596,39 @@ bool ComboSession::GiveItems(const std::vector<std::pair<std::string, std::strin
     mObtained = std::move(next);
     RebuildDeliveries();
     return true;
+}
+
+// The server resends the whole list on every connection, so the multiworld's index keeps each item once.
+bool ComboSession::ReceiveItems(const std::vector<ReceivedItem>& items) {
+    if (!Enabled()) {
+        return false;
+    }
+    auto next = mObtained;
+    for (const ReceivedItem& item : items) {
+        if (!IsGame(item.game) || item.item.empty()) {
+            return false;
+        }
+        next.insert(std::string(kReceivedPrefix) + item.game + ":" + std::to_string(item.index) + ":" + item.item);
+    }
+    if (next == mObtained) {
+        return true;
+    }
+    Persist(next, mTiers, mActiveGame, mClearedGames);
+    mObtained = std::move(next);
+    RebuildDeliveries();
+    return true;
+}
+
+std::vector<std::pair<std::string, std::string>> ComboSession::ObtainedChecks() const {
+    std::vector<std::pair<std::string, std::string>> checks;
+    for (const std::string& id : mObtained) {
+        const size_t colon = id.find(':');
+        const std::string game = colon == std::string::npos ? std::string{} : id.substr(0, colon);
+        if (IsGame(game)) {
+            checks.emplace_back(game, id.substr(colon + 1));
+        }
+    }
+    return checks;
 }
 
 nlohmann::json ComboSession::GivableItems() const {

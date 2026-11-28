@@ -1,5 +1,6 @@
 #include "FleetGui.h"
 #include "FleetSaveMenu.h"
+#include "archipelago/ApPanel.h"
 #include "SettingsSync.h"
 #include "gui/ComboWidgetStyle.h"
 #include <ship/Context.h>
@@ -53,6 +54,63 @@ class LoadingOverlay final : public Ship::GuiWindow {
 
   private:
     std::shared_ptr<std::string> mText;
+};
+
+// Archipelago's news (items sent and received, chat) in the bottom-left corner, each line fading after a while.
+class ArchipelagoFeed final : public Ship::GuiWindow {
+  public:
+    ArchipelagoFeed() : GuiWindow("", true, "~Fleet Archipelago") {
+    }
+    void InitElement() override {
+    }
+    void UpdateElement() override {
+    }
+    void DrawElement() override {
+    }
+    void Push(const std::string& text) {
+        mLines.push_back({ text, Now() + kLineSeconds });
+        if (mLines.size() > kLineLimit) {
+            mLines.erase(mLines.begin());
+        }
+    }
+    void Draw() override {
+        const double now = Now();
+        std::erase_if(mLines, [now](const Line& line) { return line.expiry <= now; });
+        if (mLines.empty()) {
+            return;
+        }
+        ImGui::SetCurrentContext(Ship::Context::GetRawInstance()->GetWindow()->GetGui()->GetImGuiContext());
+        const auto* viewport = ImGui::GetMainViewport();
+        ImGui::SetNextWindowPos(ImVec2(viewport->Pos.x + 12, viewport->Pos.y + viewport->Size.y - 12), ImGuiCond_Always,
+                                ImVec2(0, 1));
+        ImGui::SetNextWindowBgAlpha(0.55f);
+        ImGui::Begin("Fleet Archipelago", nullptr,
+                     ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
+                         ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize |
+                         ImGuiWindowFlags_NoFocusOnAppearing);
+        for (const Line& line : mLines) {
+            const float alpha = static_cast<float>(std::min(1.0, (line.expiry - now) / kFadeSeconds));
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, alpha));
+            ImGui::TextUnformatted(line.text.c_str());
+            ImGui::PopStyleColor();
+        }
+        ImGui::End();
+    }
+
+  private:
+    struct Line {
+        std::string text;
+        double expiry;
+    };
+    static constexpr double kLineSeconds = 8.0;
+    static constexpr double kFadeSeconds = 1.5;
+    static constexpr size_t kLineLimit = 6;
+
+    static double Now() {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+    }
+
+    std::vector<Line> mLines;
 };
 
 // The item review's banner along the top, clear of the get-item textbox at the bottom.
@@ -1554,7 +1612,13 @@ FleetGui::FleetGui() : mFleetMenu(std::make_shared<Menu>()) {
     AddGuiWindow(mLoadingOverlay);
     mReviewOverlay = std::make_shared<ReviewOverlay>(mReviewPrompt);
     AddGuiWindow(mReviewOverlay);
+    mArchipelagoFeed = std::make_shared<ArchipelagoFeed>();
+    AddGuiWindow(mArchipelagoFeed);
     mDefaults = mGuiWindows;
+}
+
+void FleetGui::ShowArchipelagoMessage(const std::string& text) {
+    std::static_pointer_cast<ArchipelagoFeed>(mArchipelagoFeed)->Push(text);
 }
 
 void FleetGui::SetNativeRequest(
@@ -1918,13 +1982,17 @@ class UpdatePanel {
 };
 } // namespace
 
-int FleetGui::ChooseGame(int current, const UpdateFolders& folders, int automation) {
+int FleetGui::ChooseGame(int current, const UpdateFolders& folders, int automation, ApPanel* archipelago) {
     const char* labels[] = { "Combo (OoT + MM)", "Ocarina of Time", "Majora's Mask" };
     auto window = std::dynamic_pointer_cast<Fast::Fast3dWindow>(Ship::Context::GetRawInstance()->GetWindow());
     std::optional<UpdatePanel> updates;
     if (automation < 0) {
         updates.emplace(folders);
     }
+    bool showsArchipelago = false;
+    const bool hasOot = IsGameInstalled(folders.oot, 0);
+    const bool hasMm = IsGameInstalled(folders.mm, 1);
+    const bool isModePlayable[] = { hasOot && hasMm, hasOot, hasMm };
     while (window->IsRunning()) {
         window->HandleEvents();
         if (!window->IsFrameReady()) {
@@ -1947,7 +2015,14 @@ int FleetGui::ChooseGame(int current, const UpdateFolders& folders, int automati
         ImGui::PopStyleColor();
         ImGui::PopStyleVar();
         int result = -2;
-        if (open) {
+        if (open && showsArchipelago) {
+            const int chosen = archipelago->Draw(ComboRando::ComboMenu_ThemeColor());
+            if (chosen == ApPanel::kBack) {
+                showsArchipelago = false;
+            } else if (chosen >= 0) {
+                result = chosen;
+            }
+        } else if (open) {
             const auto theme = ComboRando::ComboMenu_ThemeColor();
             ImGui::SetWindowFontScale(1.4f);
             ImGui::TextColored(theme, "Choose your game");
@@ -1961,9 +2036,14 @@ int FleetGui::ChooseGame(int current, const UpdateFolders& folders, int automati
             const bool isPlayBlocked = updates && updates->BlocksPlay();
             ImGui::BeginDisabled(isPlayBlocked);
             for (int mode = 0; mode < 3; mode++) {
+                ImGui::BeginDisabled(!isModePlayable[mode]);
                 if (ImGui::Button(labels[mode], ImVec2(-1, 48))) {
                     result = mode;
                 }
+                ImGui::EndDisabled();
+            }
+            if (archipelago != nullptr && ImGui::Button("Archipelago", ImVec2(-1, 48))) {
+                showsArchipelago = true;
             }
             ImGui::EndDisabled();
             if (isPlayBlocked) {

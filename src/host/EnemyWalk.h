@@ -743,9 +743,23 @@ class EnemyWalk {
         }
     }
 
-    void RecordResult(const std::string& state) {
+    // A damaged actor heap only crashes later, when the scene unloads, so each enemy is checked right after its run.
+    std::optional<nlohmann::json> FindArenaDamage() {
+        const nlohmann::json arena = mHost.request(mHost.game, "TestArena", nlohmann::json::object());
+        if (!arena.is_object() || !arena.value("damaged", false)) {
+            return std::nullopt;
+        }
+        return std::make_optional(arena);
+    }
+
+    void RecordResult(const std::string& reportedState) {
         const nlohmann::json result = nlohmann::json::parse(mHost.settings->GetString(kResult, ""), nullptr, false);
+        const std::optional<nlohmann::json> arenaDamage = FindArenaDamage();
+        const std::string state = arenaDamage ? "arena_damaged" : reportedState;
         mRecord["state"] = state;
+        if (arenaDamage) {
+            mRecord["arena"] = *arenaDamage;
+        }
         if (result.is_object()) {
             mRecord["result"] = result;
         }

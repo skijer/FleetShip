@@ -1,3 +1,4 @@
+#include "AssetSetup.h"
 #include "GameInstall.h"
 
 #include <cctype>
@@ -29,6 +30,9 @@
 #include "GameFiber.h"
 #include "GameModule.h"
 #include "ComboSession.h"
+#include "archipelago/ApPanel.h"
+#include "archipelago/ApPaths.h"
+#include "archipelago/ApSession.h"
 #include "FleetSaveMenu.h"
 #include "FleetGui.h"
 #include "CrossWalk.h"
@@ -141,6 +145,7 @@ int sSmokeSwitchesDone = 0;
 int sSmokeResetsLeft = 0;
 int sSmokeResetsDone = 0;
 ComboSession sSession;
+std::unique_ptr<ApSession> sArchipelago;
 std::shared_ptr<FleetSaveMenu> sSaveMenu;
 std::shared_ptr<FleetGui> sFleetGui;
 bool sOpeningSession = false;
@@ -362,7 +367,11 @@ const char* GetDeliveries(const char* game) {
 
 bool ReportObtained(const char* game, const char* check) {
     try {
-        return game != nullptr && check != nullptr && sSession.ReportObtained(game, check);
+        const bool isReported = game != nullptr && check != nullptr && sSession.ReportObtained(game, check);
+        if (isReported && sArchipelago) {
+            sArchipelago->ReportObtained(game, check);
+        }
+        return isReported;
     } catch (const std::exception& error) {
         std::cerr << "[fleet] could not persist pickup: " << error.what() << "\n";
         return false;
@@ -410,7 +419,11 @@ bool ReportSharedTiers(const char* game, const char* tiers) {
 
 int GoalReached(const char* game) {
     try {
-        return game == nullptr || sSession.ReportGoalReached(game) ? 1 : 0;
+        const bool isGoalMet = game == nullptr || sSession.ReportGoalReached(game);
+        if (isGoalMet && sArchipelago) {
+            sArchipelago->ReportGoal();
+        }
+        return isGoalMet ? 1 : 0;
     } catch (const std::exception& error) {
         std::cerr << "[fleet] could not persist the cleared game: " << error.what() << "\n";
         return 1;
@@ -419,6 +432,24 @@ int GoalReached(const char* game) {
 
 GameIndex IndexOf(const char* game) {
     return std::string(game) == "mm" ? Mm : Oot;
+}
+
+const FleetArchipelagoItem* ArchipelagoItems(const char* game, uint32_t* count) {
+    if (count == nullptr) {
+        return nullptr;
+    }
+    *count = 0;
+    return sArchipelago && game != nullptr ? sArchipelago->Items(game, count) : nullptr;
+}
+
+void PumpArchipelago() {
+    if (!sArchipelago) {
+        return;
+    }
+    sArchipelago->Pump(&sSession);
+    for (const std::string& message : sArchipelago->TakeMessages()) {
+        sFleetGui->ShowArchipelagoMessage(message);
+    }
 }
 
 void CommitSave() {
@@ -1471,6 +1502,7 @@ void FrameEnd(const char* game) {
     KeepCrashesQuiet();
     CatchUpParkedGame(game);
     sSession.CommitIfRequested();
+    PumpArchipelago();
     if (sCreatedStartPending) {
         sCreatedStartPending = false;
         const GameIndex target = sSession.ResumeGame() == "mm" ? Mm : Oot;
@@ -1772,6 +1804,9 @@ void* HostFunction(const char* name) {
     }
     if (service == "GoalReached") {
         return reinterpret_cast<void*>(GoalReached);
+    }
+    if (service == "ArchipelagoItems") {
+        return reinterpret_cast<void*>(ArchipelagoItems);
     }
     return nullptr;
 }
@@ -2091,7 +2126,12 @@ int RunFleet(int argc, char* argv[]) {
         SilenceCrashDialogs();
     }
     RemoveReplacedFiles(InstallFolder());
-    if (options.smokeFrames == 0 && !EnsureGameInstalls(InstallFolder(), options.ootDirectory, options.mmDirectory)) {
+    const bool isPlayerRun = options.smokeFrames == 0;
+    if (isPlayerRun && !EnsureGameInstalls(InstallFolder(), options.ootDirectory, options.mmDirectory)) {
+        return 2;
+    }
+    if (isPlayerRun && !EnsureGameAssets(InstallFolder(), std::filesystem::u8path(options.ootDirectory),
+                                         std::filesystem::u8path(options.mmDirectory))) {
         return 2;
     }
     sSmokeFrames = options.smokeFrames;
@@ -2139,18 +2179,33 @@ int RunFleet(int argc, char* argv[]) {
     }
     CreateHostContext();
     OpenWindow(options);
+    std::optional<std::string> archipelagoComboSlot;
     if (!options.internalRestore && (options.smokeFrames == 0 || options.testChoice >= 0)) {
         const int previous = Ship::Context::GetRawInstance()->GetHostConfig()->GetInt("Fleet.GameMode", 0);
         const UpdateFolders folders{ InstallFolder(), std::filesystem::absolute(options.ootDirectory),
                                      std::filesystem::absolute(options.mmDirectory) };
-        options.mode = sFleetGui->ChooseGame(previous, folders, options.testChoice);
+        sArchipelago = std::make_unique<ApSession>(ArchipelagoFolder(InstallFolder()));
+        ApPanel archipelago(*sArchipelago, folders);
+        options.mode = sFleetGui->ChooseGame(previous, folders, options.testChoice,
+                                             options.testChoice < 0 ? &archipelago : nullptr);
         if (options.mode < 0) {
             return 0;
+        }
+        if (options.mode == ApPanel::kSetUpCombo) {
+            options.mode = 0;
+            archipelagoComboSlot = archipelago.Slot();
         }
         auto config = Ship::Context::GetRawInstance()->GetHostConfig();
         config->SetInt("Fleet.GameMode", options.mode);
         config->Save();
         options.start = options.mode == 2 ? Mm : Oot;
+        // The archipelago mod registers its items as the games load, so the session must exist before they attach.
+        if (sArchipelago->IsActive()) {
+            sSession.Open(sArchipelago->SeedPath(), sArchipelago->SessionDirectory(), 0);
+            options.start = sSession.ResumeGame() == "mm" ? Mm : Oot;
+        } else {
+            sArchipelago.reset();
+        }
     }
     sMode = options.mode;
     if (sMode != 0) {
@@ -2179,6 +2234,9 @@ int RunFleet(int argc, char* argv[]) {
         });
         if (options.smokeNew >= 0 && !options.smokeNativeGeneration) {
             sSaveMenu->Automate(options.smokeNew, options.smokeResume, !options.smokeName);
+        }
+        if (archipelagoComboSlot) {
+            sSaveMenu->OpenArchipelagoSetup(*archipelagoComboSlot);
         }
     }
     sFleetGui->SetReset(ResetActiveGame);

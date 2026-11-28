@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <map>
 #include <memory>
@@ -19,9 +20,13 @@
 #include <ship/Context.h>
 #include <ship/GameRegistry.h>
 
+#include "ArchipelagoSeed.h"
 #include "GameModule.h"
 #include "GenerationProgress.h"
 #include "ServeProtocol.h"
+#include "archipelago/ApSession.h"
+#include "archipelago/ApWorld.h"
+#include "rando/ArchipelagoExport.h"
 #include "rando/ComboPlaythrough.h"
 #include "rando/CrossDungeonCoordinator.h"
 #include "rando/CrossDungeonGeneration.h"
@@ -42,6 +47,17 @@ enum GameIndex { Oot, Mm, GameCount };
 
 std::array<std::unique_ptr<GameModule>, GameCount> sGames;
 std::unique_ptr<GenerationProgress> sProgress;
+
+// A solo seed's other game: nothing to place and nothing reachable, so the combined fill runs on one game.
+constexpr const char* kAbsentGameDump = R"({"checks":[],"pool":[],"fixed":[],"items":[],"junkPool":[],"prices":{}})";
+
+// A solo seed loads only its own game; the other one answers every request with an empty object.
+std::string RequestGame(int game, const std::string& op, const std::string& json = "{}") {
+    if (sGames[game] == nullptr) {
+        return "{}";
+    }
+    return sGames[game]->Request(op, json);
+}
 
 enum class StartingGame { Oot, Mm, Random };
 
@@ -66,6 +82,7 @@ struct Options {
     std::string serveFolder;
     std::string checkSeedPath;
     std::string checkReferencePath;
+    std::string archipelagoConnectServer;
     std::string checkBaselinePath;
     std::string shareChoicesPath;
     std::string sharePairsPath;
@@ -74,6 +91,9 @@ struct Options {
     std::string songs = "native";
     nlohmann::json fleetBlock;
     bool testChain = false;
+    std::string archipelagoFolder;
+    std::string archipelagoPlayer = "Player";
+    std::string soloGame;
 };
 
 struct Fill {
@@ -156,6 +176,9 @@ template <GameIndex Game> struct Oracle {
     }
 
     static std::string DumpStaticData() {
+        if (sGames[Game] == nullptr) {
+            return kAbsentGameDump;
+        }
         Ship::GameScope scope(Module().Name());
         return Module().TakeString(Module().Functions().DumpRandoStaticData());
     }
@@ -164,7 +187,7 @@ template <GameIndex Game> struct Oracle {
 template <GameIndex Game> struct CrossHost {
     static const char* Reply(const std::string& op, const std::string& json) {
         static std::string reply;
-        reply = sGames[Game]->Request(op, json);
+        reply = RequestGame(Game, op, json);
         return reply.empty() ? nullptr : reply.c_str();
     }
 
@@ -346,6 +369,8 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             options.serveFolder = value;
         } else if (flag == "--check-seed") {
             options.checkSeedPath = value;
+        } else if (flag == "--archipelago-connect") {
+            options.archipelagoConnectServer = value;
         } else if (flag == "--check-reference") {
             options.checkReferencePath = value;
         } else if (flag == "--check-baseline") {
@@ -367,22 +392,38 @@ bool ParseOptions(int argc, char* argv[], Options& options) {
             }
         } else if (flag == "--unshared") {
             options.unsharedPairs = SplitCommaList(value);
+        } else if (flag == "--archipelago-out") {
+            options.archipelagoFolder = value;
+        } else if (flag == "--archipelago-player") {
+            options.archipelagoPlayer = value;
+        } else if (flag == "--solo") {
+            if (value != "oot" && value != "mm") {
+                return false;
+            }
+            options.soloGame = value;
         } else {
             return false;
         }
     }
-    const bool needsNoGame = !options.checkSeedPath.empty() || !options.shareChoicesPath.empty();
+    const bool needsNoGame = !options.checkSeedPath.empty() || !options.shareChoicesPath.empty() ||
+                             !options.archipelagoConnectServer.empty();
     return (!options.ootDirectory.empty() && !options.mmDirectory.empty()) || needsNoGame;
 }
 
 bool AttachGames(const Options& options) {
-    sGames[Oot] = GameModule::Load(options.ootDirectory, "soh", HostFunction);
-    sGames[Mm] = GameModule::Load(options.mmDirectory, "2ship", HostFunction);
-    if (sGames[Oot] == nullptr || sGames[Mm] == nullptr) {
+    const bool needsOot = options.soloGame != "mm";
+    const bool needsMm = options.soloGame != "oot";
+    if (needsOot) {
+        sGames[Oot] = GameModule::Load(options.ootDirectory, "soh", HostFunction);
+    }
+    if (needsMm) {
+        sGames[Mm] = GameModule::Load(options.mmDirectory, "2ship", HostFunction);
+    }
+    if ((needsOot && sGames[Oot] == nullptr) || (needsMm && sGames[Mm] == nullptr)) {
         return false;
     }
-    for (const auto& game : sGames) {
-        game->Request("InitRandoHeadless");
+    for (int game = 0; game < GameCount; game++) {
+        RequestGame(game, "InitRandoHeadless");
     }
     sCrossDungeons.hosts = { CrossHost<Oot>::Fns(), CrossHost<Mm>::Fns() };
     return true;
@@ -533,7 +574,7 @@ bool RestoreSettingsFrom(const std::string& spoilerPath, Options& options, bool 
     PoolRewardsForFleet(blocks, fleet);
     ShuffleSharedGreatSpin(blocks, options.sharedMask);
     for (int game = 0; game < GameCount; game++) {
-        sGames[game]->Request("RestoreSettings", blocks[game].dump());
+        RequestGame(game, "RestoreSettings", blocks[game].dump());
     }
     const nlohmann::json goal = spoiler.value("goal", nlohmann::json::object());
     if (!commandLineGoal && goal.value("type", std::string()) == "triforceHunt") {
@@ -573,7 +614,9 @@ void SendComboOptions(const Options& options, bool mmStart) {
     const std::string startingGame = mmStart ? "MM" : "OOT";
     const ComboRando::CwGoal& goal = options.goal;
     const int poolPieces = ComboRando::CwPoolPieces(goal);
-    const int pieces[GameCount] = { ComboRando::CwOotPieces(poolPieces), ComboRando::CwMmPieces(poolPieces) };
+    const bool isSolo = !options.soloGame.empty();
+    const int pieces[GameCount] = { isSolo ? poolPieces : ComboRando::CwOotPieces(poolPieces),
+                                    isSolo ? poolPieces : ComboRando::CwMmPieces(poolPieces) };
     for (int game = 0; game < GameCount; game++) {
         const nlohmann::json request = { { "hunt", goal.hunt },
                                          { "required", goal.required },
@@ -582,7 +625,7 @@ void SendComboOptions(const Options& options, bool mmStart) {
                                          { "startingGame", startingGame },
                                          { "songs", options.songs },
                                          { "goalMode", goal.either ? "either" : "both" } };
-        sGames[game]->Request("SetComboOptions", request.dump());
+        RequestGame(game, "SetComboOptions", request.dump());
     }
 }
 
@@ -595,6 +638,62 @@ const ComboRando::OracleFns kMmOracle = { .Reset = Oracle<Mm>::Reset,
                                           .SetOwnedItems = Oracle<Mm>::SetOwnedItems,
                                           .GetReachableChecks = Oracle<Mm>::GetReachableChecks,
                                           .PlaceItem = Oracle<Mm>::PlaceItem };
+
+// An absent OoT never gates MM, so its portal reads open.
+const ComboRando::OracleFns kAbsentOracle = { .Reset = [] {},
+                                              .SetOwnedItems = [](const char*) {},
+                                              .GetReachableChecks = []() -> const char* { return "[]"; },
+                                              .PlaceItem = [](const char*, const char*) {},
+                                              .GetPortalOpen = []() -> uint8_t { return 1; } };
+
+constexpr const char* kOotHuntTotalKey = "gRandoSettings.TriforceHuntTotalPieces";
+constexpr const char* kOotWinconKey = "gRandoSettings.ShuffleWincon";
+constexpr const char* kOotWinconPiecesKey = "gRandoSettings.WinconTriforceCount";
+constexpr int kOotWinconTriforcePieces = 7;
+constexpr const char* kMmHuntKey = "gRando.Options.RO_SHUFFLE_TRIFORCE_PIECES";
+constexpr const char* kMmHuntRequiredKey = "gRando.Options.RO_TRIFORCE_PIECES_REQUIRED";
+constexpr const char* kMmHuntMaxKey = "gRando.Options.RO_TRIFORCE_PIECES_MAX";
+
+int SettingInt(const nlohmann::json& settings, const char* key, int fallback) {
+    const auto found = settings.find(key);
+    return found != settings.end() && found->is_number_integer() ? found->get<int>() : fallback;
+}
+
+// The games apply Fleet's goal over their own, so a solo seed hands its game back its own Triforce settings.
+ComboRando::CwGoal OwnSoloGoal(const Options& options) {
+    const int game = options.soloGame == "mm" ? Mm : Oot;
+    const nlohmann::json dump = nlohmann::json::parse(RequestGame(game, "DumpSettings"), nullptr, false);
+    const nlohmann::json settings = dump.is_object() ? dump.value("settings", nlohmann::json::object())
+                                                     : nlohmann::json::object();
+    if (game == Oot) {
+        const int total = SettingInt(settings, kOotHuntTotalKey, 0);
+        if (total > 0 && SettingInt(settings, kOotWinconKey, 0) == kOotWinconTriforcePieces) {
+            const int required = std::clamp(SettingInt(settings, kOotWinconPiecesKey, total), 1, total);
+            return { .hunt = true, .required = required, .total = total };
+        }
+        return { .either = true, .pieces = total };
+    }
+    const bool hasPieces = SettingInt(settings, kMmHuntKey, 0) == 1;
+    const int max = hasPieces ? SettingInt(settings, kMmHuntMaxKey, 0) : 0;
+    const int required = std::min(SettingInt(settings, kMmHuntRequiredKey, 0), max);
+    if (required > 0) {
+        return { .hunt = true, .required = required, .total = max };
+    }
+    return { .either = true, .pieces = max };
+}
+
+void SettleSoloGame(Options& options) {
+    if (options.soloGame.empty()) {
+        return;
+    }
+    options.sharedMask = 0;
+    options.unsharedPairs.clear();
+    options.goal = OwnSoloGoal(options);
+    options.start = options.soloGame == "mm" ? StartingGame::Mm : StartingGame::Oot;
+    options.crossPools.reset();
+    options.passages = nlohmann::json::array();
+    options.rules.zones.reset();
+}
 
 void WriteDumps(const Fill& fill, const std::string& directory) {
     if (directory.empty()) {
@@ -678,14 +777,14 @@ const char* const kMmStartingItemsKey = "gRando.StartingItems";
 const char* const kFleetStartingItemsKey = "fleet.startingItems";
 
 bool StartsInOot(const std::string& name) {
-    const nlohmann::json native = nlohmann::json::parse(sGames[Oot]->Request("StartingItems"), nullptr, false);
+    const nlohmann::json native = nlohmann::json::parse(RequestGame(Oot, "StartingItems"), nullptr, false);
     const auto isChosen = [&](const nlohmann::json& item) {
         return item.value("name", std::string{}) == name && item.value("count", 0) > 0;
     };
     if (native.is_array() && std::any_of(native.begin(), native.end(), isChosen)) {
         return true;
     }
-    const nlohmann::json block = nlohmann::json::parse(sGames[Oot]->Request("DumpSettings"), nullptr, false);
+    const nlohmann::json block = nlohmann::json::parse(RequestGame(Oot, "DumpSettings"), nullptr, false);
     if (!block.is_object()) {
         return false;
     }
@@ -728,16 +827,16 @@ bool WithholdMmEntryItems(const nlohmann::json& mmSettings, const std::string& m
     }
     nlohmann::json patched = mmSettings;
     patched["settings"][kMmStartingItemsKey] = std::move(kept);
-    sGames[Mm]->Request("RestoreSettings", patched.dump());
+    RequestGame(Mm, "RestoreSettings", patched.dump());
     return true;
 }
 
 Fill PrepareWorlds(uint32_t masterSeed, const Options& options, bool mmStart, const nlohmann::json& mmSettings) {
     EnterStage(GenerationStage::Preparing);
-    sGames[Mm]->Request("RestoreSettings", mmSettings.dump());
+    RequestGame(Mm, "RestoreSettings", mmSettings.dump());
     const std::string seed = nlohmann::json{ { "seed", masterSeed } }.dump();
-    for (const auto& game : sGames) {
-        game->Request("SetSeed", seed);
+    for (int game = 0; game < GameCount; game++) {
+        RequestGame(game, "SetSeed", seed);
     }
     SendComboOptions(options, mmStart);
     Fill fill = { .masterSeed = masterSeed,
@@ -748,6 +847,12 @@ Fill PrepareWorlds(uint32_t masterSeed, const Options& options, bool mmStart, co
                   .mmOracle = kMmOracle };
     if (fill.ootDump.empty() || fill.mmDump.empty()) {
         fill.result.error = "a game could not prepare its seed (see its log)";
+        return fill;
+    }
+    if (!options.soloGame.empty()) {
+        const bool isMmSolo = options.soloGame == "mm";
+        (isMmSolo ? fill.ootDump : fill.mmDump) = kAbsentGameDump;
+        (isMmSolo ? fill.ootOracle : fill.mmOracle) = kAbsentOracle;
         return fill;
     }
     if (!mmStart && WithholdMmEntryItems(mmSettings, fill.mmDump)) {
@@ -766,8 +871,8 @@ Fill FillOnce(uint32_t masterSeed, const Options& options, bool mmStart, const n
         fill.result.error = "the combined pool holds fewer Triforce pieces than the hunt requires";
         return fill;
     }
-    const std::string forcedOot = sGames[Oot]->Request("GetForcedPlacements");
-    if (!options.poolOnly) {
+    const std::string forcedOot = options.soloGame == "mm" ? "" : RequestGame(Oot, "GetForcedPlacements");
+    if (!options.poolOnly && options.soloGame.empty()) {
         EnterStage(GenerationStage::Entrances);
         if (!LayOutCrossEntrances(fill, options)) {
             return fill;
@@ -780,13 +885,15 @@ Fill FillOnce(uint32_t masterSeed, const Options& options, bool mmStart, const n
         goal,
         mmStart ? ComboRando::GAME_MM : ComboRando::GAME_OOT, ComboRando::EncodeUnsharedSpec(options.unsharedPairs),
         options.sharedMask, options.poolOnly, options.plentifulModItems, options.rules);
+    // Archipelago replaces the fill's placements, so hints read from them would lie.
+    const bool hasHints = !options.poolOnly && options.archipelagoFolder.empty();
     if (fill.result.success) {
-        if (!options.poolOnly) {
-            fill.ootHintDump = sGames[Oot]->Request("DumpHintData");
+        if (hasHints) {
+            fill.ootHintDump = RequestGame(Oot, "DumpHintData");
         }
         WriteDumps(fill, options.dumpDirectory);
     }
-    if (fill.result.success && !options.poolOnly) {
+    if (fill.result.success && hasHints) {
         EnterStage(GenerationStage::Hints);
         fill.requiredness = FindRequiredItems(fill, options, ootAccess == ComboRando::OotAccess::NO_LOGIC);
     }
@@ -803,23 +910,72 @@ nlohmann::json GoalJson(const ComboRando::CwGoal& goal) {
     };
 }
 
-nlohmann::json BuildSpoiler(const Fill& fill, const Options& options) {
-    const nlohmann::json fillSpoiler = nlohmann::json::parse(fill.result.spoilerJson);
+// Everything a seed file is made from, so a seed can be composed again after Archipelago moves its items.
+struct SpoilerParts {
+    nlohmann::json fillSpoiler;
+    std::string dumps[GameCount];
+    nlohmann::json settings[GameCount];
+    uint32_t seed = 0;
+    uint32_t masterSeed = 0;
+    bool mmStart = false;
+    nlohmann::json goal;
+    std::vector<std::string> unsharedPairs;
+    std::string songs;
+    nlohmann::json fleetBlock;
+    nlohmann::json crossDungeonSeed;
+};
+
+nlohmann::json PartsToJson(const SpoilerParts& parts) {
+    return { { "fillSpoiler", parts.fillSpoiler },
+             { "dumps", { parts.dumps[Oot], parts.dumps[Mm] } },
+             { "settings", { parts.settings[Oot], parts.settings[Mm] } },
+             { "seed", parts.seed },
+             { "masterSeed", parts.masterSeed },
+             { "mmStart", parts.mmStart },
+             { "goal", parts.goal },
+             { "unsharedPairs", parts.unsharedPairs },
+             { "songs", parts.songs },
+             { "fleetBlock", parts.fleetBlock },
+             { "crossDungeonSeed", parts.crossDungeonSeed } };
+}
+
+SpoilerParts PartsFromJson(const nlohmann::json& json) {
+    SpoilerParts parts;
+    parts.fillSpoiler = json.at("fillSpoiler");
+    for (int game = 0; game < GameCount; game++) {
+        parts.dumps[game] = json.at("dumps").at(game).get<std::string>();
+        parts.settings[game] = json.at("settings").at(game);
+    }
+    parts.seed = json.at("seed").get<uint32_t>();
+    parts.masterSeed = json.at("masterSeed").get<uint32_t>();
+    parts.mmStart = json.at("mmStart").get<bool>();
+    parts.goal = json.at("goal");
+    parts.unsharedPairs = json.at("unsharedPairs").get<std::vector<std::string>>();
+    parts.songs = json.at("songs").get<std::string>();
+    parts.fleetBlock = json.at("fleetBlock");
+    parts.crossDungeonSeed = json.at("crossDungeonSeed");
+    return parts;
+}
+
+using HintsFromForeign = std::function<nlohmann::json(const nlohmann::json& foreign)>;
+
+nlohmann::json ComposeSpoiler(const SpoilerParts& parts, const HintsFromForeign& hints) {
+    const nlohmann::json& fillSpoiler = parts.fillSpoiler;
     const nlohmann::json sharedItems = fillSpoiler.value("sharedItems", nlohmann::json::array());
     const uint64_t sharedMask = ComboRando::SharedMaskFromKeys(sharedItems);
-    const auto modPairs = ComboRando::ResolveSharedPairs(ComboRando::EncodeUnsharedSpec(options.unsharedPairs),
-                                                         fill.mmDump, fill.ootDump);
+    const auto modPairs = ComboRando::ResolveSharedPairs(ComboRando::EncodeUnsharedSpec(parts.unsharedPairs),
+                                                         parts.dumps[Mm], parts.dumps[Oot]);
     nlohmann::json placements[GameCount] = { fillSpoiler.value("oot", nlohmann::json::object()),
                                              fillSpoiler.value("mm", nlohmann::json::object()) };
     const nlohmann::json rawForeign = fillSpoiler.value("foreign", nlohmann::json::array());
-    ComboRando::SuffixCrossGameItems(placements[Oot], placements[Mm], rawForeign, fill.ootDump, fill.mmDump,
+    ComboRando::SuffixCrossGameItems(placements[Oot], placements[Mm], rawForeign, parts.dumps[Oot], parts.dumps[Mm],
                                      ComboRando::SharedUntaggedNames(sharedMask, modPairs));
     nlohmann::json disguised = rawForeign;
     ComboRando::AssignTrapDisguises(disguised, fillSpoiler.value("oot", nlohmann::json::object()),
-                                    fillSpoiler.value("mm", nlohmann::json::object()), fill.ootDump, fill.mmDump,
-                                    fill.masterSeed);
+                                    fillSpoiler.value("mm", nlohmann::json::object()), parts.dumps[Oot],
+                                    parts.dumps[Mm], parts.masterSeed);
     nlohmann::json foreign = ComboRando::BuildForeignArray(disguised, sharedMask, modPairs);
-    const auto labels = ItemLabels(fill.ootDump, fill.mmDump);
+    const auto labels = ItemLabels(parts.dumps[Oot], parts.dumps[Mm]);
     for (auto& entry : foreign) {
         const std::string game = entry.value("itemGame", std::string{});
         for (const auto& [nameField, labelField] : { std::pair{ "itemName", "label" },
@@ -832,38 +988,70 @@ nlohmann::json BuildSpoiler(const Fill& fill, const Options& options) {
     }
 
     nlohmann::json spoiler = { { "fileType", "ComboShipRandomizer" },
-                               { "seed", options.seed },
-                               { "masterSeed", fill.masterSeed },
-                               { "goal", GoalJson(options.goal) },
-                               { "startingGame", fill.mmStart ? "MM" : "OOT" },
+                               { "seed", parts.seed },
+                               { "masterSeed", parts.masterSeed },
+                               { "goal", parts.goal },
+                               { "startingGame", parts.mmStart ? "MM" : "OOT" },
                                { "sharedItems", sharedItems },
-                               { "unsharedPairs", options.unsharedPairs },
+                               { "unsharedPairs", parts.unsharedPairs },
                                { "modFamilies", ComboRando::EncodeModPairs(modPairs) },
                                { "plentifulModItems", fillSpoiler.value("plentifulModItems", false) },
                                { "foreign", foreign },
-                               { "hints",
-                                 ComboRando::Generate(fill.masterSeed, fill.ootDump, fill.ootHintDump, fill.mmDump,
-                                                      foreign, fill.result.spoilerJson, fill.requiredness) } };
-    const std::string dumps[GameCount] = { fill.ootDump, fill.mmDump };
+                               { "hints", hints ? hints(foreign) : nlohmann::json::array() } };
     for (int game = 0; game < GameCount; game++) {
-        nlohmann::json block = nlohmann::json::parse(sGames[game]->Request("DumpSettings"), nullptr, false);
-        if (!block.is_object()) {
-            block = nlohmann::json::object();
+        nlohmann::json block = parts.settings[game].is_object() ? parts.settings[game] : nlohmann::json::object();
+        if (!block.contains("settings")) {
+            block["settings"] = nlohmann::json::object();
         }
         block["placements"] = std::move(placements[game]);
-        block["prices"] = nlohmann::json::parse(dumps[game]).value("prices", nlohmann::json::object());
+        block["prices"] = nlohmann::json::parse(parts.dumps[game]).value("prices", nlohmann::json::object());
         spoiler[kGameKeys[game]] = std::move(block);
     }
-    if (ComboRando::CrossDungeon::Coordinator::Enabled(fill.crossDungeonSeed)) {
-        spoiler["crossDungeonEntrances"] = fill.crossDungeonSeed;
+    if (ComboRando::CrossDungeon::Coordinator::Enabled(parts.crossDungeonSeed)) {
+        spoiler["crossDungeonEntrances"] = parts.crossDungeonSeed;
     }
-    spoiler["songs"] = options.songs;
-    if (options.fleetBlock.is_object()) {
-        spoiler["fleet"] = options.fleetBlock;
+    spoiler["songs"] = parts.songs;
+    if (parts.fleetBlock.is_object()) {
+        spoiler["fleet"] = parts.fleetBlock;
     }
     spoiler["entrances"] = { { "oot", spoiler["oot"].value("entrances", nlohmann::json::array()) } };
     spoiler["oot"].erase("entrances");
     return spoiler;
+}
+
+// A solo seed's other game keeps no settings: Fleet never prepares it.
+nlohmann::json DumpGameSettings(int game, const Options& options) {
+    if (!options.soloGame.empty() && options.soloGame != kGameKeys[game]) {
+        return nlohmann::json::object();
+    }
+    const nlohmann::json block = nlohmann::json::parse(RequestGame(game, "DumpSettings"), nullptr, false);
+    return block.is_object() ? block : nlohmann::json::object();
+}
+
+SpoilerParts PartsOf(const Fill& fill, const Options& options) {
+    SpoilerParts parts;
+    parts.fillSpoiler = nlohmann::json::parse(fill.result.spoilerJson);
+    parts.dumps[Oot] = fill.ootDump;
+    parts.dumps[Mm] = fill.mmDump;
+    for (int game = 0; game < GameCount; game++) {
+        parts.settings[game] = DumpGameSettings(game, options);
+    }
+    parts.seed = options.seed;
+    parts.masterSeed = fill.masterSeed;
+    parts.mmStart = fill.mmStart;
+    parts.goal = GoalJson(options.goal);
+    parts.unsharedPairs = options.unsharedPairs;
+    parts.songs = options.songs;
+    parts.fleetBlock = options.fleetBlock;
+    parts.crossDungeonSeed = fill.crossDungeonSeed;
+    return parts;
+}
+
+nlohmann::json BuildSpoiler(const Fill& fill, const Options& options) {
+    return ComposeSpoiler(PartsOf(fill, options), [&](const nlohmann::json& foreign) {
+        return ComboRando::Generate(fill.masterSeed, fill.ootDump, fill.ootHintDump, fill.mmDump, foreign,
+                                    fill.result.spoilerJson, fill.requiredness);
+    });
 }
 
 nlohmann::json PlaythroughPlacements(const nlohmann::json& spoiler, const std::string dumps[GameCount]) {
@@ -893,15 +1081,15 @@ int ValidateSpoiler(Options& options) {
     const uint32_t masterSeed = spoiler.value("masterSeed", 0u);
     const bool mmStart = spoiler.value("startingGame", std::string("OOT")) == "MM";
     const std::string seed = nlohmann::json{ { "seed", masterSeed } }.dump();
-    for (const auto& game : sGames) {
-        game->Request("SetSeed", seed);
+    for (int game = 0; game < GameCount; game++) {
+        RequestGame(game, "SetSeed", seed);
     }
     SendComboOptions(options, mmStart);
     const std::string dumps[GameCount] = { Oracle<Oot>::DumpStaticData(), Oracle<Mm>::DumpStaticData() };
     for (int game = 0; game < GameCount; game++) {
         const nlohmann::json prices =
             spoiler.value(kGameKeys[game], nlohmann::json::object()).value("prices", nlohmann::json::object());
-        sGames[game]->Request("SetCheckPrices", prices.dump());
+        RequestGame(game, "SetCheckPrices", prices.dump());
     }
     ComboRando::OracleFns ootOracle = kOotOracle;
     ComboRando::OracleFns mmOracle = kMmOracle;
@@ -917,7 +1105,7 @@ int ValidateSpoiler(Options& options) {
         PlaythroughPlacements(spoiler, dumps).dump(), ootOracle, mmOracle, std::to_string(masterSeed), nullptr, nullptr,
         dumps[Oot], dumps[Mm], portalGated, false, options.goal, mmStart, options.sharedMask,
         ComboRando::EncodeUnsharedSpec(options.unsharedPairs));
-    sGames[Mm]->Request("Finish");
+    RequestGame(Mm, "Finish");
     std::cout << "[fleet-seedgen] " << options.playthroughPath << (result.beatable ? " BEATABLE" : " NOT BEATABLE")
               << ": OoT " << result.reachableOot << " reachable / " << result.unreachableOot << " not, MM "
               << result.reachableMm << " / " << result.unreachableMm << "\n";
@@ -935,7 +1123,7 @@ constexpr int kPrepareAttempts = 8;
 
 Fill FillWithRetries(const Options& options) {
     Fill fill = {};
-    const nlohmann::json mmSettings = nlohmann::json::parse(sGames[Mm]->Request("DumpSettings"), nullptr, false);
+    const nlohmann::json mmSettings = nlohmann::json::parse(RequestGame(Mm, "DumpSettings"), nullptr, false);
     if (!mmSettings.is_object()) {
         fill.result.error = "MM could not report its settings (see its log)";
         return fill;
@@ -1007,13 +1195,13 @@ nlohmann::json DescribeSharePairs(const Fill& fill) {
 }
 
 void FinishGames() {
-    for (const auto& game : sGames) {
-        game->Request("Finish");
+    for (int game = 0; game < GameCount; game++) {
+        RequestGame(game, "Finish");
     }
 }
 
 std::optional<nlohmann::json> ReadMmSettings() {
-    nlohmann::json settings = nlohmann::json::parse(sGames[Mm]->Request("DumpSettings"), nullptr, false);
+    nlohmann::json settings = nlohmann::json::parse(RequestGame(Mm, "DumpSettings"), nullptr, false);
     if (!settings.is_object()) {
         return std::nullopt;
     }
@@ -1123,7 +1311,7 @@ nlohmann::json BuildChecksReply(const Options& options) {
     const Fill fill = PrepareFirstWorkableSeed(options, [&](uint32_t masterSeed, bool mmStart) {
         return PrepareWorlds(masterSeed, options, mmStart, *mmSettings);
     });
-    const nlohmann::json forced = nlohmann::json::parse(sGames[Oot]->Request("GetForcedPlacements"), nullptr, false);
+    const nlohmann::json forced = nlohmann::json::parse(RequestGame(Oot, "GetForcedPlacements"), nullptr, false);
     FinishGames();
     if (fill.ootDump.empty() || fill.mmDump.empty()) {
         return { { "error", fill.result.error } };
@@ -1139,7 +1327,7 @@ void ResetGames(const std::array<nlohmann::json, GameCount>& baseline) {
     sCrossDungeons.SetOptions({});
     sCrossDungeons.testChain = false;
     for (int game = 0; game < GameCount; game++) {
-        sGames[game]->Request("RestoreSettings", baseline[game].dump());
+        RequestGame(game, "RestoreSettings", baseline[game].dump());
     }
 }
 
@@ -1198,7 +1386,7 @@ int Serve(const Options& served) {
     std::filesystem::create_directories(folder);
     std::array<nlohmann::json, GameCount> baseline;
     for (int game = 0; game < GameCount; game++) {
-        baseline[game] = nlohmann::json::parse(sGames[game]->Request("DumpSettings"), nullptr, false);
+        baseline[game] = nlohmann::json::parse(RequestGame(game, "DumpSettings"), nullptr, false);
         if (!baseline[game].is_object()) {
             baseline[game] = nlohmann::json::object();
         }
@@ -1279,6 +1467,82 @@ int PrintShareArguments(const Options& options) {
     return 0;
 }
 
+void WriteJsonFile(const std::filesystem::path& path, const nlohmann::json& json) {
+    std::ofstream output(path, std::ios::binary | std::ios::trunc);
+    output.exceptions(std::ios::badbit | std::ios::failbit);
+    output << json.dump();
+}
+
+constexpr const char* kOotWinItem = "Triforce";
+
+// Ship ends a solo seed on its Triforce, wherever its win condition puts it.
+void SettleSoloArchipelagoGoal(ComboRando::Archipelago::ExportInput& input, const Options& options) {
+    if (options.soloGame == "oot") {
+        input.goalItem = kOotWinItem;
+        input.goalItemGame = ComboRando::GAME_OOT;
+    }
+}
+
+int ExportArchipelago(const Fill& fill, const Options& options) {
+    EnterStage(GenerationStage::Hints);
+    const auto stamp = std::chrono::system_clock::now().time_since_epoch().count();
+    const std::string exportId = std::to_string(fill.masterSeed) + "-" + std::to_string(stamp);
+    ComboRando::Archipelago::ExportInput input = {
+        .fillSpoiler = fill.result.spoilerJson,
+        .ootDump = fill.ootDump,
+        .mmDump = fill.mmDump,
+        .ootOracle = fill.ootOracle,
+        .mmOracle = fill.mmOracle,
+        .portalGated = ComboRando::OotAccessFromDump(fill.ootDump) != ComboRando::OotAccess::NO_LOGIC,
+        .mmStart = fill.mmStart,
+        .goal = options.goal,
+        .sharedMask = options.sharedMask,
+        .unsharedSpec = ComboRando::EncodeUnsharedSpec(options.unsharedPairs),
+        .songs = options.songs,
+        .exportId = exportId,
+        .mode = options.soloGame.empty() ? "combo" : options.soloGame
+    };
+    SettleSoloArchipelagoGoal(input, options);
+    const ComboRando::Archipelago::ExportResult result = ComboRando::Archipelago::BuildExport(input);
+    if (!result.error.empty()) {
+        std::cerr << "[fleet-seedgen] Archipelago export failed: " << result.error << "\n";
+        return 1;
+    }
+    EnterStage(GenerationStage::Saving);
+    const std::filesystem::path folder = options.archipelagoFolder;
+    const std::filesystem::path exportFolder = folder / kArchipelagoExportsFolder / exportId;
+    std::filesystem::create_directories(exportFolder);
+    WriteJsonFile(exportFolder / kArchipelagoPartsFile, PartsToJson(PartsOf(fill, options)));
+    WriteJsonFile(exportFolder / kArchipelagoMapFile, result.localMap);
+    WriteJsonFile(exportFolder / kArchipelagoNamesFile, result.names);
+    std::string error;
+    if (!WriteArchipelagoFiles(folder, result.names, result.seedData, options.archipelagoPlayer, error)) {
+        std::cerr << "[fleet-seedgen] " << error << "\n";
+        return 1;
+    }
+    std::cout << "[fleet-seedgen] Archipelago export " << exportId << " PASS: "
+              << result.seedData.at("locations").size() << " locations in " << folder.string() << "\n";
+    return 0;
+}
+
+// Joins a slot without the games, through the same session the chooser's Connect and Play uses.
+int CheckArchipelagoConnect(const Options& options) {
+    ApSession session(options.archipelagoFolder);
+    session.Connect({ options.archipelagoConnectServer, options.archipelagoPlayer, "" });
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::minutes(2);
+    while (std::chrono::steady_clock::now() < deadline) {
+        session.Pump(nullptr);
+        const ApSession::Stage stage = session.GetStage();
+        if (stage == ApSession::Stage::Ready || stage == ApSession::Stage::Failed) {
+            std::cout << "[fleet-archipelago] " << session.Status() << std::endl;
+            return stage == ApSession::Stage::Ready ? 0 : 1;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    std::cout << "[fleet-archipelago] timed out: " << session.Status() << std::endl;
+    return 1;
+}
+
 int GenerateSeed(int argc, char* argv[]) {
     Options options;
     if (!ParseOptions(argc, argv, options)) {
@@ -1299,6 +1563,9 @@ int GenerateSeed(int argc, char* argv[]) {
     if (!options.shareChoicesPath.empty()) {
         return PrintShareArguments(options);
     }
+    if (!options.archipelagoConnectServer.empty()) {
+        return CheckArchipelagoConnect(options);
+    }
     const bool commandLineGoal = options.goal.hunt || options.start != StartingGame::Oot;
     if (!options.progressPath.empty()) {
         sProgress = std::make_unique<GenerationProgress>(options.progressPath);
@@ -1318,9 +1585,9 @@ int GenerateSeed(int argc, char* argv[]) {
     if (!options.cataloguePath.empty()) {
         nlohmann::json catalogue;
         for (int game = 0; game < GameCount; game++) {
-            catalogue[kGameKeys[game]] = nlohmann::json::parse(sGames[game]->Request("DumpSettings"));
+            catalogue[kGameKeys[game]] = nlohmann::json::parse(RequestGame(game, "DumpSettings"));
             catalogue[kGameKeys[game]]["definitions"] =
-                nlohmann::json::parse(sGames[game]->Request("DumpSettingDefinitions"));
+                nlohmann::json::parse(RequestGame(game, "DumpSettingDefinitions"));
         }
         std::ofstream output(options.cataloguePath);
         output.exceptions(std::ios::badbit | std::ios::failbit);
@@ -1334,20 +1601,26 @@ int GenerateSeed(int argc, char* argv[]) {
         return 2;
     }
     SettleTriforcePair(options);
+    SettleSoloGame(options);
 
     if (!options.poolPath.empty()) {
         return WritePool(options);
     }
     Fill fill = FillWithRetries(options);
     if (!fill.result.success) {
-        sGames[Mm]->Request("Finish");
+        RequestGame(Mm, "Finish");
         std::cerr << "[fleet-seedgen] seed " << options.seed << " failed: " << fill.result.error << "\n";
         return 1;
+    }
+    if (!options.archipelagoFolder.empty()) {
+        const int status = ExportArchipelago(fill, options);
+        RequestGame(Mm, "Finish");
+        return status;
     }
     EnterStage(GenerationStage::Saving);
     // Finish drops the seed's restored lists, so the settings snapshot is taken first.
     const nlohmann::json spoiler = BuildSpoiler(fill, options);
-    sGames[Mm]->Request("Finish");
+    RequestGame(Mm, "Finish");
     std::cout << "[fleet-seedgen] seed " << options.seed << " PASS: " << spoiler["oot"]["placements"].size()
               << " OoT and " << spoiler["mm"]["placements"].size() << " MM placements, " << spoiler["foreign"].size()
               << " across games\n";
@@ -1358,6 +1631,18 @@ int GenerateSeed(int argc, char* argv[]) {
 }
 
 } // namespace
+
+nlohmann::json FleetSeedgen_ComposeArchipelagoSeed(const std::filesystem::path& exportFolder,
+                                                   const std::vector<ComboRando::Archipelago::ScoutedItem>& scouted,
+                                                   int ownSlot, const std::map<int64_t, std::string>& ownItemNames) {
+    SpoilerParts parts = PartsFromJson(ReadJsonFile((exportFolder / kArchipelagoPartsFile).string()));
+    const nlohmann::json map = ReadJsonFile((exportFolder / kArchipelagoMapFile).string());
+    parts.fillSpoiler = ComboRando::Archipelago::ApplyMultiworld(parts.fillSpoiler, map, scouted, ownSlot,
+                                                                 ownItemNames, parts.dumps[Mm]);
+    nlohmann::json seed = ComposeSpoiler(parts, nullptr);
+    seed["archipelago"] = { { "exportId", map.at("exportId") }, { "mode", map.at("mode") } };
+    return seed;
+}
 
 #ifdef FLEET_INTERNAL_WORKER
 int FleetSeedWorker(int argc, char* argv[]) {

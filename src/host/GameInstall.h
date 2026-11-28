@@ -6,7 +6,10 @@
 #include <string>
 #include <vector>
 
+// The player may skip one game; Fleet then offers only what the other one plays.
 bool EnsureGameInstalls(const std::filesystem::path& folder, std::string& oot, std::string& mm);
+// Game 0 is Ocarina of Time, 1 Majora's Mask.
+bool IsGameInstalled(const std::filesystem::path& folder, size_t game);
 
 struct UpdateFolders {
     std::filesystem::path fleet;

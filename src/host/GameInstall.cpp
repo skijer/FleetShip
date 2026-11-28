@@ -1,4 +1,5 @@
 #include "GameInstall.h"
+#include "FileDialogs.h"
 #include "ReleaseKeys.h"
 
 #include <SDL.h>
@@ -21,7 +22,6 @@
 #ifdef _WIN32
 #include <windows.h>
 #include <winhttp.h>
-#include <shobjidl.h>
 #endif
 
 namespace {
@@ -56,9 +56,12 @@ const GameInstall Games[] = {
       "https://github.com/skijer/2ship2harkinian/releases/latest/download/unbound-release.json", MmReleaseKey }
 };
 
+bool HasGameProgram(const fs::path& folder, const GameInstall& game) {
+    return fs::is_regular_file(folder / game.module) && fs::is_regular_file(folder / game.archive);
+}
+
 bool HasGameFiles(const fs::path& folder, const GameInstall& game) {
-    return fs::is_regular_file(folder / game.module) && fs::is_regular_file(folder / game.archive) &&
-           fs::is_regular_file(folder / game.data);
+    return HasGameProgram(folder, game) && fs::is_regular_file(folder / game.data);
 }
 
 void ShowProblem(const std::string& message) {
@@ -143,39 +146,9 @@ std::vector<uint8_t> Download(const std::string& url, size_t limit, std::atomic<
     }
 }
 
-fs::path ChooseFolder() {
-    const HRESULT initialized = CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    IFileOpenDialog* dialog = nullptr;
-    fs::path result;
-    if (SUCCEEDED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&dialog)))) {
-        DWORD options = 0;
-        dialog->GetOptions(&options);
-        dialog->SetOptions(options | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM | FOS_PATHMUSTEXIST);
-        if (SUCCEEDED(dialog->Show(nullptr))) {
-            IShellItem* item = nullptr;
-            if (SUCCEEDED(dialog->GetResult(&item))) {
-                PWSTR path = nullptr;
-                if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) {
-                    result = path;
-                    CoTaskMemFree(path);
-                }
-                item->Release();
-            }
-        }
-        dialog->Release();
-    }
-    if (SUCCEEDED(initialized)) {
-        CoUninitialize();
-    }
-    return result;
-}
 #else
 std::vector<uint8_t> Download(const std::string&, size_t, std::atomic<size_t>&) {
     throw std::runtime_error("Automatic installation is currently available on Windows. Set oot/mm in fleet.json.");
-}
-fs::path ChooseFolder() {
-    ShowProblem("Set oot/mm in fleet.json to the existing installation folders, then restart Fleet.");
-    return {};
 }
 #endif
 
@@ -401,18 +374,24 @@ void SaveFolder(const fs::path& folder, const char* key, const fs::path& gameFol
 }
 } // namespace
 
+bool IsGameInstalled(const fs::path& folder, size_t game) {
+    return game < std::size(Games) && HasGameFiles(folder, Games[game]);
+}
+
 bool EnsureGameInstalls(const fs::path& folder, std::string& oot, std::string& mm) {
     std::string* directories[] = { &oot, &mm };
+    size_t skipped = 0;
     for (size_t i = 0; i < std::size(Games); ++i) {
         const auto& game = Games[i];
-        while (!HasGameFiles(fs::u8path(*directories[i]), game)) {
-            const std::string message =
-                std::string(game.name) + " is missing or incomplete at:\n" + *directories[i] + "\n\nIt needs " +
-                game.module + ", " + game.archive + " and " + game.data +
-                ".\nAfter installation, open the game once to extract your ROM, then press Re-check.";
+        bool isSkipped = false;
+        while (!isSkipped && !HasGameProgram(fs::u8path(*directories[i]), game)) {
+            const std::string message = std::string(game.name) + " is missing or incomplete at:\n" + *directories[i] +
+                                        "\n\nIt needs " + game.module + " and " + game.archive +
+                                        ".\nFleet asks for your ROMs once both games are in place.";
             const SDL_MessageBoxButtonData buttons[] = { { 0, 1, "Download" },
                                                          { 0, 2, "Choose folder" },
                                                          { 0, 3, "Re-check" },
+                                                         { 0, 4, "Skip" },
                                                          { SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT, 0, "Quit" } };
             const SDL_MessageBoxData dialog{
                 SDL_MESSAGEBOX_INFORMATION,           nullptr, "Fleet setup", message.c_str(),
@@ -432,7 +411,7 @@ bool EnsureGameInstalls(const fs::path& folder, std::string& oot, std::string& m
                         break;
                     }
                     case 2: {
-                        const fs::path chosen = ChooseFolder();
+                        const fs::path chosen = ChooseFolder(std::string("Choose the ") + game.name + " folder");
                         if (!chosen.empty()) {
                             *directories[i] = chosen.string();
                             SaveFolder(folder, i == 0 ? "oot" : "mm", chosen);
@@ -441,11 +420,19 @@ bool EnsureGameInstalls(const fs::path& folder, std::string& oot, std::string& m
                     }
                     case 3:
                         break;
+                    case 4:
+                        isSkipped = true;
+                        skipped++;
+                        break;
                     default:
                         return false;
                 }
             } catch (const std::exception& error) { ShowProblem(error.what()); }
         }
+    }
+    if (skipped == std::size(Games)) {
+        ShowProblem("Fleet needs at least one game.");
+        return false;
     }
     return true;
 }
@@ -679,12 +666,12 @@ void AddModEntries(UpdateReport& report, const ModCatalog& catalog, const fs::pa
 // Both games need the other game's assets extracted from the player's own ROM; nothing can download them.
 void AddMissingExtractionNotes(UpdateReport& report, const fs::path& ootFolder, const fs::path& mmFolder) {
     if (!fs::exists(ootFolder / "mods" / "mm.o2r")) {
-        report.problems.push_back("Ocarina of Time has no Majora's Mask assets: open Ship\\soh.exe once and choose "
-                                  "your Majora's Mask ROM when it asks.");
+        report.problems.push_back("Ocarina of Time has no Majora's Mask assets yet: restart Fleet to build them "
+                                  "from your ROMs.");
     }
     if (!fs::exists(mmFolder / "mods" / "oot.o2r")) {
-        report.problems.push_back("Majora's Mask has no Ocarina of Time assets: open 2Ship\\2ship.exe once and "
-                                  "choose your Ocarina of Time ROM when it asks.");
+        report.problems.push_back("Majora's Mask has no Ocarina of Time assets yet: restart Fleet to build them "
+                                  "from your ROMs.");
     }
 }
 

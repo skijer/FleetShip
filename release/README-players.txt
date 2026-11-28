@@ -1,17 +1,21 @@
 Fleet: Ocarina of Time and Majora's Mask in one randomizer
 
+Full guide, Archipelago included: GUIDE.md in this folder, or
+  https://github.com/skijer/FleetShip/releases/latest
+Trailer: https://youtu.be/1HjUWtOB-K0
+
 You need your own legally dumped ROMs. None are included.
   Ocarina of Time: N64 NTSC 1.0, 1.1 or 1.2
   Majora's Mask: N64 US or GameCube US
 
 First launch
-  1. Run Ship\soh.exe and choose your Ocarina of Time ROM.
-     When it asks for Majora's Mask, choose that ROM too.
-  2. Run 2Ship\2ship.exe and choose your Majora's Mask ROM.
-     When it asks for Ocarina of Time, choose that ROM too.
-     If it does not ask, open Enhancements > OoT Asset Loader > Extract OoT assets.
-  3. Open each game once more and allow it to save its song icons. Then close it.
-  4. Run fleet.exe and choose Combo (OoT + MM).
+  1. Run fleet.exe.
+  2. Choose your Ocarina of Time ROM, then your Majora's Mask ROM, when Fleet asks.
+     Fleet opens each game by itself to build its files, and closes it again. It takes a few minutes.
+  3. Choose Combo (OoT + MM).
+
+Fleet remembers where your ROMs are, so after an update it rebuilds the files without asking again.
+If something fails, Fleet says which game and where its log is.
 
 Windows needs the Microsoft Visual C++ 2015-2022 x64 runtime.
 

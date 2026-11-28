@@ -5,13 +5,14 @@ Play Ocarina of Time and Majora's Mask in one application, separately or as a si
 Fleet runs [Ship of Harkinian](https://github.com/skijer/Shipwright) and
 [2 Ship 2 Harkinian](https://github.com/skijer/2ship2harkinian). You need your own ROMs; none are included.
 
+**[Trailer](https://youtu.be/1HjUWtOB-K0)** · **[Player guide: setup and Archipelago](release/GUIDE.md)**
+
 ## Play
 
 1. Download the zip for your system from [Releases](../../releases) and unzip it.
-2. Open `Ship/soh` and select your Ocarina of Time ROM. When asked, select your Majora's Mask ROM too.
-3. Open `2Ship/2ship` and select your Majora's Mask ROM. When asked, select your Ocarina of Time ROM too.
-4. Open each game once more and allow it to save its shared assets.
-5. Open `fleet` and choose **Combo (OoT + MM)**.
+2. Open `fleet` and choose your Ocarina of Time and Majora's Mask ROMs when it asks. Fleet starts each game once
+   by itself to build its files, the other game's assets included, then closes it.
+3. Choose **Combo (OoT + MM)**.
 
 | ROM | Supported versions |
 | --- | --- |

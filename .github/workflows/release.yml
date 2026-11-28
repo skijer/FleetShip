@@ -108,10 +108,10 @@ jobs:
           publish() {
             local tag="$1" title="$2" prerelease="$3" pattern="$4"
             if ! gh release view "$tag" >/dev/null 2>&1; then
-              gh release create "$tag" --target "$GITHUB_SHA" --title "$title" --notes-file release/README-players.txt --latest=false
+              gh release create "$tag" --target "$GITHUB_SHA" --title "$title" --notes-file release/GUIDE.md --latest=false
             fi
             gh release upload "$tag" $pattern --clobber
-            gh release edit "$tag" --title "$title" --notes-file release/README-players.txt --prerelease="$prerelease" \
+            gh release edit "$tag" --title "$title" --notes-file release/GUIDE.md --prerelease="$prerelease" \
               --latest="$([ "$prerelease" = false ] && echo true || echo false)"
           }
           publish nei-unbound-release "Fleet $VERSION" false \

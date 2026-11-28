@@ -1,9 +1,11 @@
 #include "FleetSaveMenu.h"
+#include "../archipelago/ApPaths.h"
 #include "gui/ComboWidgetStyle.h"
 #include "rando/SharedItems.h"
 #include "rando/CrossWorldRando.h"
 #include "rando/MmEntryGate.h"
 
+#include <cstring>
 #include <ship/GameRegistry.h>
 #include <ship/config/ConsoleVariable.h>
 
@@ -977,6 +979,16 @@ std::string FleetSaveMenu::SaveFile(const std::string& game, int slot, bool back
         .string();
 }
 
+void FleetSaveMenu::OpenArchipelagoSetup(const std::string& slot) {
+    std::strncpy(mArchipelagoSlot.data(), slot.c_str(), mArchipelagoSlot.size() - 1);
+    mIsArchipelagoSetup = true;
+    mSlot = -1;
+    mActive = true;
+    try {
+        LoadCatalogue();
+    } catch (const std::exception& error) { Fail(error.what()); }
+}
+
 bool FleetSaveMenu::SelectNative(int slot) {
     mNativeMode = false;
     if (!mEnabled || slot < 0 || slot > 2) {
@@ -1282,6 +1294,10 @@ void FleetSaveMenu::UseSeedFile(const std::filesystem::path& file) {
 }
 
 void FleetSaveMenu::DrawSeedChoice(const ImVec4& theme) {
+    if (mIsArchipelagoSetup) {
+        DrawArchipelagoExport(theme);
+        return;
+    }
     const std::string preview = mSeedChoice == 0 ? "Generate New Seed" : mSeedFiles[mSeedChoice - 1];
     ImGui::SetNextItemWidth(260);
     ComboRando::ComboMenu_PushCombobox(theme);
@@ -1325,6 +1341,43 @@ void FleetSaveMenu::DrawSeedChoice(const ImVec4& theme) {
                                      : "Available on the file-select screen. Choose an empty file, then Randomizer.");
     ImGui::TextDisabled("Seeds live in %s. Drop a Fleet seed (.json) on the window to add it.",
                         SeedFolder().string().c_str());
+    if (generating) {
+        DrawArchipelagoExport(theme);
+    }
+}
+
+void FleetSaveMenu::DrawArchipelagoExport(const ImVec4& theme) {
+    ImGui::Spacing();
+    ImGui::TextUnformatted("Archipelago");
+    ImGui::SetNextItemWidth(160);
+    ImGui::InputTextWithHint("##archipelagoSlot", "Slot name", mArchipelagoSlot.data(), mArchipelagoSlot.size());
+    ImGui::SameLine();
+    ImGui::BeginDisabled(mArchipelagoSlot[0] == '\0' || mArchipelagoJob.Running() || !mCatalogue.is_object());
+    ComboRando::ComboMenu_PushButton(theme);
+    if (ImGui::Button("Export for Archipelago")) {
+        try {
+            ExportArchipelago();
+        } catch (const std::exception& error) { mArchipelagoStatus = error.what(); }
+    }
+    ComboRando::ComboMenu_PopButton();
+    ImGui::EndDisabled();
+    if (!mArchipelagoStatus.empty()) {
+        ImGui::TextWrapped("%s", mArchipelagoStatus.c_str());
+    }
+    mArchipelagoActions.Draw(theme);
+}
+
+// Runs the same generation as a new file, then hands the seed to Archipelago instead of opening it.
+void FleetSaveMenu::ExportArchipelago() {
+    const auto nonce = std::chrono::system_clock::now().time_since_epoch().count();
+    const std::filesystem::path run = mRoot / "archipelago" / std::to_string(nonce);
+    const std::string seed = mSeed[0] != '\0' ? std::string(mSeed.data()) : std::to_string(std::random_device{}());
+    auto args = GenerationArguments(run, seed);
+    args.insert(args.end(), { "--archipelago-out", ArchipelagoFolder(mDirectory).string(), "--archipelago-player",
+                              mArchipelagoSlot.data() });
+    mArchipelagoJob.Start(mDirectory / kFleetExecutable, args, run / "archipelago.log");
+    mArchipelagoStatus = "Exporting... Fleet measures the logic of every check, which takes a few minutes.";
+    mArchipelagoActions.Withdraw();
 }
 
 nlohmann::json FleetSaveMenu::ComposeSettings() {
@@ -1765,6 +1818,15 @@ void FleetSaveMenu::ReceiveChecks(const nlohmann::json& reply) {
 
 void FleetSaveMenu::Poll() {
     PollWorker();
+    if (const auto exported = mArchipelagoJob.Poll()) {
+        const std::filesystem::path folder = ArchipelagoFolder(mDirectory);
+        if (*exported == 0) {
+            mArchipelagoStatus = "To play, choose Archipelago when Fleet starts.";
+            mArchipelagoActions.Offer(folder, mArchipelagoSlot.data());
+        } else {
+            mArchipelagoStatus = "The export failed; see the archipelago.log of this run.";
+        }
+    }
     try {
         if (const auto result = mJob.Poll()) {
             if (mLoadingCatalogue) {

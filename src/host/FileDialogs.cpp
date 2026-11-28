@@ -1,6 +1,7 @@
 #include "FileDialogs.h"
 
 #include <vector>
+#include <SDL.h>
 #ifdef _WIN32
 #include <windows.h>
 #include <shellapi.h>
@@ -13,6 +14,20 @@
 
 namespace {
 namespace fs = std::filesystem;
+
+#ifndef _WIN32
+// pfd shells out to zenity or kdialog; without either, every dialog would read as a cancel.
+bool CanShowDialogs() {
+    if (pfd::settings::available()) {
+        return true;
+    }
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Fleet",
+                             "Fleet needs zenity or kdialog to show file pickers. Install one, for example with "
+                             "\"sudo apt install zenity\", then open Fleet again.",
+                             nullptr);
+    return false;
+}
+#endif
 
 #ifdef _WIN32
 std::wstring Widen(const std::string& utf8) {
@@ -72,6 +87,9 @@ fs::path ChooseFile(const std::string& title, const std::string& filterName, con
 #ifdef _WIN32
     return ShowDialog(title, false, filterName, patterns);
 #else
+    if (!CanShowDialogs()) {
+        return {};
+    }
     const std::vector<std::string> chosen =
         pfd::open_file(title, ".", { filterName, patterns, "All files", "*" }).result();
     return chosen.empty() ? fs::path() : fs::u8path(chosen.front());
@@ -82,6 +100,9 @@ fs::path ChooseFolder(const std::string& title) {
 #ifdef _WIN32
     return ShowDialog(title, true, "", "");
 #else
+    if (!CanShowDialogs()) {
+        return {};
+    }
     const std::string chosen = pfd::select_folder(title, ".").result();
     return chosen.empty() ? fs::path() : fs::u8path(chosen);
 #endif

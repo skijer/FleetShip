@@ -1,4 +1,5 @@
 #include "ApSession.h"
+#include "ApPaths.h"
 
 #include <cctype>
 #include <chrono>
@@ -30,15 +31,6 @@ nlohmann::json ReadJson(const std::filesystem::path& path) {
     return stream ? nlohmann::json::parse(stream, nullptr, false) : nlohmann::json();
 }
 
-std::string FileSafe(const std::string& text) {
-    std::string safe;
-    for (char character : text) {
-        const bool isPlain = std::isalnum(static_cast<unsigned char>(character)) || character == '-' || character == '_';
-        safe += isPlain ? character : '_';
-    }
-    return safe.empty() ? "slot" : safe;
-}
-
 // "OoT: Hookshot" -> ("oot", "Hookshot").
 std::pair<std::string, std::string> SplitItemName(const std::string& name) {
     for (const auto& [prefix, game] : { std::pair{ kOotPrefix, "oot" }, std::pair{ kMmPrefix, "mm" } }) {
@@ -56,6 +48,12 @@ ApSession::ApSession(std::filesystem::path folder) : mFolder(std::move(folder)) 
 
 void ApSession::Connect(const ApConnectInfo& info) {
     mInfo = info;
+    mOwnItemNames.clear();
+    mOwnLocationNames.clear();
+    mLocationIds.clear();
+    mLocationGames.clear();
+    mPendingItems.clear();
+    mItems.clear();
     mStage = Stage::Connecting;
     mStatus = "Connecting to " + info.server + "...";
     mHasComposed = false;
@@ -201,7 +199,7 @@ void ApSession::LoadExport(const std::string& exportId) {
     const nlohmann::json names = ReadJson(mExportFolder / kArchipelagoNamesFile);
     if (!map.is_object() || !names.is_object()) {
         Fail("This slot was exported on another computer: copy its folder into " +
-             (mFolder / kArchipelagoExportsFolder).string());
+             ToUtf8(mFolder / kArchipelagoExportsFolder));
         return;
     }
     mMode = map.at("mode").get<std::string>();

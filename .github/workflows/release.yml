@@ -63,11 +63,14 @@ jobs:
           gh release download mods -R skijer/2ship2harkinian -p combo_compatibility-mm.o2r -p fleet_oot_assets-mm.o2r -D mods/mm
           mv mods/mm/combo_compatibility-mm.o2r mods/mm/combo_compatibility.o2r
           mv mods/mm/fleet_oot_assets-mm.o2r mods/mm/fleet_oot_assets.o2r
+          mkdir -p loaders/oot loaders/mm
+          gh release download mods -R skijer/Shipwright -p mm_assets.o2r -D loaders/oot
+          gh release download mods -R skijer/2ship2harkinian -p oot_assets-mm.o2r -O loaders/mm/oot_assets.o2r
       - name: Assemble
         shell: bash
         run: >
           python release/assemble_release.py --platform "${{ steps.platform.outputs.name }}"
-          --edition "${{ matrix.edition }}" --program program --games games --mods mods --output dist
+          --edition "${{ matrix.edition }}" --program program --games games --mods mods --loaders loaders --output dist
       - uses: actions/upload-artifact@v4
         with:
           name: package-${{ steps.platform.outputs.name }}-${{ matrix.edition }}

@@ -1,4 +1,5 @@
 #include "ApWorld.h"
+#include "ApPaths.h"
 
 #include <fstream>
 #include <vector>
@@ -9,7 +10,8 @@
 
 namespace {
 
-constexpr const char* kWorldSource = R"PY("""Ocarina of Time and Majora's Mask, alone or combined, played through Fleet."""
+constexpr const char* kWorldSource =
+    R"PY("""Ocarina of Time and Majora's Mask, alone or combined, played through Fleet."""
 import json
 import pkgutil
 from dataclasses import dataclass
@@ -20,6 +22,60 @@ from Options import OptionDict, OptionError, PerGameCommonOptions
 from worlds.AutoWorld import World
 
 _NAMES = json.loads(pkgutil.get_data(__name__, "names.json").decode("utf-8"))
+
+
+def _name_id(name: str) -> int:
+    """The id Fleet gives a name: FNV-1a over its UTF-8 bytes, kept to 53 bits."""
+    value = 14695981039346656037
+    for byte in name.encode("utf-8"):
+        value = ((value ^ byte) * 1099511628211) & 0xFFFFFFFFFFFFFFFF
+    return (value & ((1 << 53) - 1)) or 1
+
+
+def _player_files_folder() -> str:
+    import os
+    import sys
+    arguments = sys.argv
+    for index, argument in enumerate(arguments[:-1]):
+        if argument == "--player_files_path":
+            return arguments[index + 1]
+    try:
+        import Utils
+        from settings import get_settings
+        folder = str(get_settings().generator.player_files_path)
+        return folder if os.path.isabs(folder) else Utils.user_path(folder)
+    except Exception:
+        return ""
+
+
+def _add_seed_names(seed: dict) -> None:
+    for entry in seed["locations"]:
+        _NAMES["locations"].setdefault(entry["name"], _name_id(entry["name"]))
+    for entry in seed["items"]:
+        _NAMES["items"].setdefault(entry["name"], _name_id(entry["name"]))
+    _NAMES["items"].setdefault(seed["filler"], _name_id(seed["filler"]))
+
+
+def _add_names_from_player_files() -> None:
+    """Every Fleet YAML carries its seed's names, so one fleet.apworld generates any number of Fleet players, each
+    exported on their own computer."""
+    import os
+    folder = _player_files_folder()
+    if not os.path.isdir(folder):
+        return
+    for file_name in os.listdir(folder):
+        if not file_name.lower().endswith((".yaml", ".yml")):
+            continue
+        try:
+            with open(os.path.join(folder, file_name), encoding="utf-8-sig") as file:
+                for line in file:
+                    if line.lstrip().startswith("fleet_seed:"):
+                        _add_seed_names(json.loads(line.split("fleet_seed:", 1)[1]))
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+
+
+_add_names_from_player_files()
 _GAME = "Fleet"
 _VICTORY = "Victory"
 _CLASSES = {
@@ -107,9 +163,9 @@ class FleetWorld(World):
 
 bool WriteZip(const std::filesystem::path& path, const std::vector<ZipEntry>& entries, std::string& error) {
     int code = 0;
-    zip_t* archive = zip_open(path.string().c_str(), ZIP_CREATE | ZIP_TRUNCATE, &code);
+    zip_t* archive = zip_open(ToUtf8(path).c_str(), ZIP_CREATE | ZIP_TRUNCATE, &code);
     if (archive == nullptr) {
-        error = "could not create " + path.string();
+        error = "could not create " + ToUtf8(path);
         return false;
     }
     for (const ZipEntry& entry : entries) {
@@ -117,13 +173,13 @@ bool WriteZip(const std::filesystem::path& path, const std::vector<ZipEntry>& en
         if (source == nullptr || zip_file_add(archive, entry.path.c_str(), source, ZIP_FL_OVERWRITE) < 0) {
             zip_source_free(source);
             zip_discard(archive);
-            error = "could not add " + entry.path + " to " + path.string();
+            error = "could not add " + entry.path + " to " + ToUtf8(path);
             return false;
         }
     }
     if (zip_close(archive) != 0) {
         zip_discard(archive);
-        error = "could not finish " + path.string();
+        error = "could not finish " + ToUtf8(path);
         return false;
     }
     return true;
@@ -168,14 +224,14 @@ bool WriteArchipelagoFiles(const std::filesystem::path& folder, const nlohmann::
         return false;
     }
     // JSON is valid YAML, so the seed goes in verbatim.
-    std::ofstream yaml(folder / (playerName + ".yaml"), std::ios::binary | std::ios::trunc);
+    std::ofstream yaml(folder / (FileSafe(playerName) + ".yaml"), std::ios::binary | std::ios::trunc);
     yaml << "name: " << nlohmann::json(playerName).dump() << "\n"
          << "description: " << nlohmann::json("Fleet " + seedData.value("mode", std::string{}) + " seed").dump() << "\n"
          << "game: Fleet\n"
          << "Fleet:\n"
          << "  fleet_seed: " << seedData.dump() << "\n";
     if (!yaml) {
-        error = "could not write the YAML in " + folder.string();
+        error = "could not write the YAML in " + ToUtf8(folder);
         return false;
     }
     return true;

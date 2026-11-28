@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
+#include <csignal>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -155,6 +156,8 @@ int sMode = 0;
 GameIndex sLobbyStart = Oot;
 std::array<bool, GameCount> sNativeFileSelect = {};
 bool sMenusWarmed = false;
+// Hiding the menu once the games warm closes any configuration, so the Archipelago setup opens only after that.
+std::optional<std::string> sArchipelagoComboSlot;
 bool sWasConfiguring = false;
 bool sSmokeCycle = false;
 bool sSmokeItemTest = false;
@@ -1604,6 +1607,10 @@ void FrameEnd(const char* game) {
     }
 #endif
     if (sSaveMenu != nullptr && sSaveMenu->Enabled() && sMenusWarmed) {
+        if (sArchipelagoComboSlot) {
+            sSaveMenu->OpenArchipelagoSetup(*sArchipelagoComboSlot);
+            sArchipelagoComboSlot.reset();
+        }
         if (sSmokeNativeGeneration && !sNativeGenerationTestStarted && IndexOf(game) == Oot) {
             sNativeGenerationTestStarted = true;
             sGames[Oot].module->Request("GenerateSeedTest");
@@ -2108,6 +2115,10 @@ void RegisterCommands() {
 }
 
 int RunFleet(int argc, char* argv[]) {
+#ifndef _WIN32
+    // OpenSSL writes to the Archipelago socket with write(), which raises SIGPIPE once the server hangs up.
+    std::signal(SIGPIPE, SIG_IGN);
+#endif
     Options options;
     if (!ParseOptions(argc, argv, options)) {
         const char* usage = "Fleet needs your Ship of Harkinian and 2 Ship 2 Harkinian installations\n"
@@ -2179,7 +2190,6 @@ int RunFleet(int argc, char* argv[]) {
     }
     CreateHostContext();
     OpenWindow(options);
-    std::optional<std::string> archipelagoComboSlot;
     if (!options.internalRestore && (options.smokeFrames == 0 || options.testChoice >= 0)) {
         const int previous = Ship::Context::GetRawInstance()->GetHostConfig()->GetInt("Fleet.GameMode", 0);
         const UpdateFolders folders{ InstallFolder(), std::filesystem::absolute(options.ootDirectory),
@@ -2193,7 +2203,7 @@ int RunFleet(int argc, char* argv[]) {
         }
         if (options.mode == ApPanel::kSetUpCombo) {
             options.mode = 0;
-            archipelagoComboSlot = archipelago.Slot();
+            sArchipelagoComboSlot = archipelago.Slot();
         }
         auto config = Ship::Context::GetRawInstance()->GetHostConfig();
         config->SetInt("Fleet.GameMode", options.mode);
@@ -2234,9 +2244,6 @@ int RunFleet(int argc, char* argv[]) {
         });
         if (options.smokeNew >= 0 && !options.smokeNativeGeneration) {
             sSaveMenu->Automate(options.smokeNew, options.smokeResume, !options.smokeName);
-        }
-        if (archipelagoComboSlot) {
-            sSaveMenu->OpenArchipelagoSetup(*archipelagoComboSlot);
         }
     }
     sFleetGui->SetReset(ResetActiveGame);

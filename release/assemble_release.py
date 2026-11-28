@@ -9,6 +9,8 @@ from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 GAME_FOLDERS = {"ship.zip": "Ship", "2ship.zip": "2Ship"}
+# Each game's asset loader builds the other game's archive at Fleet's first start; the store manages it from there.
+LOADER_FOLDERS = {"oot": "Ship", "mm": "2Ship"}
 ROM_DERIVED_ARCHIVES = {"oot.o2r", "oot-mq.o2r", "oot-unbound.o2r", "mm.o2r", "mm-unbound.o2r"}
 
 
@@ -61,6 +63,14 @@ def stage_game(archive, target, platform):
         unpack_disk_image(target)
 
 
+def place_loaders(loaders, staging):
+    for game, folder in LOADER_FOLDERS.items():
+        store = staging / folder / "mods" / "neistore"
+        store.mkdir(parents=True, exist_ok=True)
+        for loader in (loaders / game).glob("*.o2r"):
+            shutil.copy2(loader, store / loader.name)
+
+
 def refuse_rom_data(staging):
     leaked = [path for path in staging.rglob("*.o2r") if path.name.lower() in ROM_DERIVED_ARCHIVES]
     if leaked:
@@ -83,6 +93,7 @@ def main():
     parser.add_argument("--program", type=Path, required=True)
     parser.add_argument("--games", type=Path, required=True)
     parser.add_argument("--mods", type=Path, required=True)
+    parser.add_argument("--loaders", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -103,6 +114,7 @@ def main():
     for archive_name, folder in GAME_FOLDERS.items():
         stage_game(args.games / archive_name, staging / folder, args.platform)
     shutil.copy2(staging / "Ship" / "gamecontrollerdb.txt", staging / "gamecontrollerdb.txt")
+    place_loaders(args.loaders, staging)
     refuse_rom_data(staging)
     write_zip(staging, args.output / f"Fleet-{args.platform}{suffix}.zip")
 

@@ -4,6 +4,8 @@
 #include <SDL.h>
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <cerrno>
 #include <chrono>
 #include <cstdint>
 #include <fstream>
@@ -30,6 +32,7 @@ constexpr int kExitRunAgain = 3;
 constexpr const char* kSetupFlag = "--fleet-asset-setup";
 constexpr const char* kResultFileName = "fleet-asset-setup.txt";
 constexpr int kMaxRunsPerGame = 3;
+constexpr const char* kRomScratchFolder = "rom-setup";
 
 struct RomKind {
     const char* title;
@@ -49,8 +52,9 @@ const RomKind kMmRom = { "Majora's Mask", "mmRom", "--mm-rom", "N64 US or GameCu
 constexpr const char* kOotLauncher = "soh.exe";
 constexpr const char* kMmLauncher = "2ship.exe";
 #elif defined(__APPLE__)
-constexpr const char* kOotLauncher = "soh-macos";
-constexpr const char* kMmLauncher = "2s2h-macos";
+// The app bundles' install step renames the launchers, and the release copies Contents/MacOS as it is.
+constexpr const char* kOotLauncher = "soh";
+constexpr const char* kMmLauncher = "2s2h";
 #else
 constexpr const char* kOotLauncher = "soh.elf";
 constexpr const char* kMmLauncher = "2s2h.elf";
@@ -179,20 +183,46 @@ std::wstring Widen(const std::string& utf8) {
     return wide;
 }
 
-// The games read argv in the ANSI code page; a short path is ASCII even when the long one is not.
-std::string ToArgument(const fs::path& path) {
+fs::path ToShortPath(const fs::path& path) {
     std::array<wchar_t, 32768> shortPath{};
     const DWORD length = GetShortPathNameW(path.c_str(), shortPath.data(), static_cast<DWORD>(shortPath.size()));
-    if (length == 0 || length >= shortPath.size()) {
-        return ToUtf8(path);
+    return length == 0 || length >= shortPath.size() ? path : fs::path(std::wstring(shortPath.data(), length));
+}
+
+bool IsAscii(const fs::path& path) {
+    const std::string text = ToUtf8(path);
+    return std::all_of(text.begin(), text.end(), [](unsigned char character) { return character < 0x80; });
+}
+
+// The games read argv in the ANSI code page, so a ROM outside ASCII reaches them as a copy in Fleet's scratch
+// folder. Not as its own short name: that upper-cases the extension, which the games' extractors refuse.
+// Empty when no ASCII path exists, as when 8.3 names are off and Fleet's own folder is not ASCII.
+fs::path ToGameReadablePath(const fs::path& rom, const fs::path& scratch, const std::string& name) {
+    if (IsAscii(rom)) {
+        return rom;
     }
-    return ToUtf8(fs::path(std::wstring(shortPath.data(), length)));
+    std::string extension = ToUtf8(rom.extension());
+    std::transform(extension.begin(), extension.end(), extension.begin(),
+                   [](unsigned char character) { return static_cast<char>(std::tolower(character)); });
+    std::error_code error;
+    fs::create_directories(scratch, error);
+    const fs::path copy = ToShortPath(scratch) / (name + extension);
+    if (!IsAscii(copy)) {
+        return {};
+    }
+    fs::copy_file(rom, copy, fs::copy_options::overwrite_existing, error);
+    return error ? fs::path() : copy;
 }
 #else
-std::string ToArgument(const fs::path& path) {
-    return path.string();
+fs::path ToGameReadablePath(const fs::path& rom, const fs::path& scratch, const std::string& name) {
+    return rom;
 }
 #endif
+
+SetupRoms ToGameReadableRoms(const SetupRoms& roms, const fs::path& scratch) {
+    return { roms.oot.empty() ? fs::path() : ToGameReadablePath(roms.oot, scratch, "oot"),
+             roms.mm.empty() ? fs::path() : ToGameReadablePath(roms.mm, scratch, "mm") };
+}
 
 // Empty when the player gave up on this ROM.
 fs::path ObtainRom(const fs::path& fleetFolder, const RomKind& kind) {
@@ -259,11 +289,11 @@ std::vector<std::string> SetupArguments(const SetupRoms& roms) {
     std::vector<std::string> arguments = { kSetupFlag };
     if (!roms.oot.empty()) {
         arguments.push_back(kOotRom.flag);
-        arguments.push_back(ToArgument(roms.oot));
+        arguments.push_back(ToUtf8(roms.oot));
     }
     if (!roms.mm.empty()) {
         arguments.push_back(kMmRom.flag);
-        arguments.push_back(ToArgument(roms.mm));
+        arguments.push_back(ToUtf8(roms.mm));
     }
     return arguments;
 }
@@ -313,11 +343,17 @@ std::optional<int> RunSetupProcess(const fs::path& launcher, const std::vector<s
         _exit(127);
     }
     int status = 0;
-    while (waitpid(child, &status, WNOHANG) == 0) {
+    for (;;) {
+        const pid_t waited = waitpid(child, &status, WNOHANG);
+        if (waited == child) {
+            return WIFEXITED(status) ? std::optional<int>(WEXITSTATUS(status)) : std::nullopt;
+        }
+        if (waited < 0 && errno != EINTR) {
+            return std::nullopt;
+        }
         progress.Update();
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
-    return WIFEXITED(status) ? std::optional<int>(WEXITSTATUS(status)) : std::nullopt;
 }
 #endif
 
@@ -434,14 +470,26 @@ bool EnsureGameAssets(const fs::path& fleetFolder, const fs::path& ootFolder, co
         ShowMessage(SDL_MESSAGEBOX_INFORMATION, "Fleet builds the game files the next time it opens.");
         return true;
     }
+    const fs::path scratch = fleetFolder / kRomScratchFolder;
+    const SetupRoms readableRoms = ToGameReadableRoms(*roms, scratch);
+    const bool isRomUnreadable =
+        (!roms->oot.empty() && readableRoms.oot.empty()) || (!roms->mm.empty() && readableRoms.mm.empty());
+    if (isRomUnreadable) {
+        ShowMessage(SDL_MESSAGEBOX_ERROR, "The games cannot open a ROM whose folder path has accents or other "
+                                          "special letters. Move your ROMs to a folder such as C:\\ROMs and open "
+                                          "Fleet again.");
+        return true;
+    }
     std::string problems;
     for (const SetupGame& game : games) {
-        const std::string problem = RunGameSetup(game, *roms);
+        const std::string problem = RunGameSetup(game, readableRoms);
         if (!problem.empty()) {
             problems += std::string("\n") + game.title + ": " + problem + ".\nIts log is in " +
                         ToUtf8(game.folder / "logs") + "\n";
         }
     }
+    std::error_code error;
+    fs::remove_all(scratch, error);
     if (!problems.empty()) {
         ShowMessage(SDL_MESSAGEBOX_ERROR, "Some game files could not be built:\n" + problems);
     }

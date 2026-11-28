@@ -7,6 +7,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "ApPaths.h"
 #include "ApWorld.h"
 #include "host/FileDialogs.h"
 
@@ -109,7 +110,7 @@ bool CopyInto(const fs::path& file, const fs::path& folder, std::string& error) 
     fs::create_directories(folder, copyError);
     fs::copy_file(file, folder / file.filename(), fs::copy_options::overwrite_existing, copyError);
     if (copyError) {
-        error = "could not copy " + file.filename().string() + " into " + folder.string() + ": " + copyError.message();
+        error = "could not copy " + ToUtf8(file.filename()) + " into " + ToUtf8(folder) + ": " + copyError.message();
         return false;
     }
     return true;
@@ -122,10 +123,10 @@ std::string ReadBytes(const fs::path& path) {
 } // namespace
 
 std::string InstallIntoArchipelago(const fs::path& exportFolder, const std::string& slot) {
-    const std::string yaml = slot + ".yaml";
+    const std::string yaml = FileSafe(slot) + ".yaml";
     const fs::path archipelago = FindArchipelagoFolder(exportFolder);
     if (archipelago.empty()) {
-        return "Exported to " + exportFolder.string() + ". Archipelago was not found: put " + kWorldFile +
+        return "Exported to " + ToUtf8(exportFolder) + ". Archipelago was not found: put " + kWorldFile +
                " in its custom_worlds folder and " + yaml + " in its Players folder.";
     }
     const fs::path players = FindPlayerFolder(archipelago);
@@ -134,12 +135,12 @@ std::string InstallIntoArchipelago(const fs::path& exportFolder, const std::stri
         !CopyInto(exportFolder / yaml, players, error)) {
         return "Fleet " + error + ". Close Archipelago and press Install again.";
     }
-    return "Installed: " + std::string(kWorldFile) + " is in custom_worlds and " + yaml + " in " + players.string() +
+    return "Installed: " + std::string(kWorldFile) + " is in custom_worlds and " + yaml + " in " + ToUtf8(players) +
            ". Open Archipelago and generate.";
 }
 
 HostPackage PackageForHost(const fs::path& exportFolder, const std::string& slot) {
-    const std::string yaml = slot + ".yaml";
+    const std::string yaml = FileSafe(slot) + ".yaml";
     const std::vector<ZipEntry> entries = {
         { std::string("custom_worlds/") + kWorldFile, ReadBytes(exportFolder / kWorldFile) },
         { "Players/" + yaml, ReadBytes(exportFolder / yaml) },
@@ -148,14 +149,14 @@ HostPackage PackageForHost(const fs::path& exportFolder, const std::string& slot
     if (entries[0].bytes.empty() || entries[1].bytes.empty()) {
         return { {}, "The export is incomplete: export again." };
     }
-    const fs::path zip = exportFolder / "for-host" / (slot + "-archipelago.zip");
+    const fs::path zip = exportFolder / "for-host" / (FileSafe(slot) + "-archipelago.zip");
     std::error_code folderError;
     fs::create_directories(zip.parent_path(), folderError);
     std::string error;
     if (!WriteZip(zip, entries, error)) {
         return { {}, "Fleet " + error + "." };
     }
-    return { zip, "Send " + zip.string() +
+    return { zip, "Send " + ToUtf8(zip) +
                       " to the host. They unzip it into their Archipelago folder, the one with ArchipelagoLauncher, "
                       "and generate." };
 }

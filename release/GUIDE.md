@@ -1,92 +1,68 @@
-# Fleet: Ocarina of Time and Majora's Mask in one randomizer
+# Fleet
 
-Play Ocarina of Time and Majora's Mask separately, as one combined randomizer, or as part of an Archipelago multiworld.
+**Ocarina of Time + Majora's Mask. One randomizer.**
 
-**[Watch the trailer](https://youtu.be/1HjUWtOB-K0)**
+▶️ **[Watch the trailer](https://youtu.be/1HjUWtOB-K0)**
 
-You need your own ROMs. None are included.
+## 1. Install
 
-| ROM | Versions Fleet reads |
+**Download your zip below. Unzip it.**
+
+**Open `fleet`. Pick both ROMs.**
+
+**Wait. Games open and close.**
+
+<img src="https://raw.githubusercontent.com/skijer/FleetShip/main/release/guide/preparing-fleet.png" width="460">
+
+**Pick a mode. Play.**
+
+<img src="https://raw.githubusercontent.com/skijer/FleetShip/main/release/guide/choose-game.png" width="460">
+
+| ROM | Works |
 | --- | --- |
-| Ocarina of Time | N64 NTSC 1.0, 1.1 or 1.2 |
-| Majora's Mask | N64 US or GameCube US |
+| Ocarina of Time | N64 NTSC 1.0 / 1.1 / 1.2 |
+| Majora's Mask | N64 US / GameCube US |
 
-Other regions and re-releases, such as the LodgeNet or Virtual Console dumps, do not work.
+## 2. Archipelago
 
-## Set up
+**Choose Archipelago. Type your slot.**
 
-1. Download the zip for your system below: **Fleet-windows.zip**, **Fleet-linux.zip** or **Fleet-mac.zip**.
-2. Unzip it into a normal folder, such as `C:\Games\Fleet`. Do not run it from inside the zip, a temporary folder or
-   OneDrive.
-3. Open `fleet` (`fleet.exe` on Windows).
-4. Fleet asks for your Ocarina of Time ROM, then your Majora's Mask ROM. Fleet then opens each game by itself, builds
-   its files and closes it again. This takes a few minutes and happens only once.
-5. Choose **Combo (OoT + MM)**, **Ocarina of Time** or **Majora's Mask**.
+<img src="https://raw.githubusercontent.com/skijer/FleetShip/main/release/guide/ap-combo.png" width="460">
 
-Windows also needs the
-[Microsoft Visual C++ 2015-2022 x64 runtime](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+**OoT or MM: press Export.**
 
-Keep the folder together: Fleet runs the games from `Ship` and `2Ship`, loads its mods from `mods` and keeps saves in
-`saves`.
+**Combo: set options, then Export.**
 
-### Updating
+**Wait a few minutes.**
 
-On Windows, the game chooser offers updates. Fleet and both games update together, because they only work at matching
-versions. On Linux and macOS, download the new zip and unzip it over the old folder.
+<img src="https://raw.githubusercontent.com/skijer/FleetShip/main/release/guide/ap-exporting.png" width="460">
 
-Fleet remembers where your ROMs are. If an update needs the game files rebuilt, it does that without asking for the
-ROMs again.
+**Pick who generates.**
 
-### Steam Deck and Linux
+<img src="https://raw.githubusercontent.com/skijer/FleetShip/main/release/guide/ap-ready.png" width="460">
 
-Do the first start in Desktop Mode, where the ROM picker and Fleet's questions are easy to answer.
+### You generate
 
-## Archipelago
+**Press "I do". Open Archipelago. Generate.**
 
-Fleet plays in an [Archipelago](https://archipelago.gg) multiworld as the game **Fleet**. One slot can be Ocarina of
-Time, Majora's Mask or the combo. Archipelago 0.6.4 or newer is required.
+<img src="https://raw.githubusercontent.com/skijer/FleetShip/main/release/guide/archipelago-generate.png" width="460">
 
-### 1. Export your seed (each Fleet player)
+### Someone else generates
 
-1. In Fleet's game chooser, choose **Archipelago** and type your slot name (16 characters at most).
-2. Export the seed you want to play:
-   - **Ocarina of Time** or **Majora's Mask** alone: press **Export Ocarina of Time** or **Export Majora's Mask**.
-     It uses that game's own randomizer settings.
-   - **Combo**: open a combo file, go to its **Randomizer** page and press **Export for Archipelago**.
-3. Wait while Fleet measures the logic of every check. This can take a few minutes.
+**Press "Someone else". Send the zip.**
 
-Fleet writes two files into the `archipelago` folder beside it:
+**Host unzips it into Archipelago.**
 
-- `fleet.apworld`: the world Archipelago needs for Fleet.
-- `<your slot name>.yaml`: your player file. Do not edit it; it carries your seed.
+### Play
 
-### 2. Generate the multiworld (the host)
+**Enter server and password. Connect.**
 
-1. Put `fleet.apworld` in Archipelago's `custom_worlds` folder.
-2. Put every player's YAML in Archipelago's `Players` folder.
-3. Generate the game as usual, then host it on [archipelago.gg](https://archipelago.gg/uploads) or on your own
-   server.
+## Problems?
 
-**More than one Fleet player?** Each export adds its own names to the world, so the host needs a `fleet.apworld` that
-knows all of them. Every Fleet player sends the host their YAML and their export folder from
-`archipelago/exports/`. The host copies those folders into the host's own `Fleet/archipelago/exports/` and exports
-any seed once. The new `fleet.apworld` covers every Fleet player.
-
-### 3. Connect and play
-
-1. In Fleet, choose **Archipelago** and type the same slot name.
-2. Enter the server address of the room (for example `archipelago.gg:38281`) and the password, if it has one.
-3. Press **Connect and Play**. Fleet opens the game mode your slot was exported for.
-
-Play on the computer you exported on. To play on another one, copy your folder from `archipelago/exports/` into the
-same place in that computer's Fleet.
-
-## When something goes wrong
-
-- **"Not a ROM Fleet reads"**: the dump is another version. Check the table at the top.
-- **"Some game files could not be built"**: Fleet names the game and its `logs` folder. Send that log when you ask for
-  help.
-- **A game window shows "Not responding" during setup**: it is still building its files. Wait for it to close by
-  itself.
-- **Archipelago says the slot was exported on another computer**: copy that slot's folder from
-  `archipelago/exports/` as described above.
+- **ROM refused?** Check the table.
+- **Files failed?** Send the named log.
+- **"Not responding"?** Wait. It's working.
+- **Updating?** Use the Updates button.
+- **Windows:** needs the [VC++ runtime](https://aka.ms/vs/17/release/vc_redist.x64.exe).
+- **Mac Archipelago:** run `brew install openssl@3`.
+- **Linux file picker missing?** Install `zenity`.
